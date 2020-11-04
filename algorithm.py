@@ -58,9 +58,13 @@ class Forward:
 
 def train(build: Model, X: np.ndarray, y: np.ndarray,
           transform: Callable[[torch.Tensor], torch.Tensor]) -> nn.Module:
+    device = 'cuda' if torch.cuda.is_available() else 'cpu'
     model = build(X.shape[1], max(y) + 1)
-    X = torch.from_numpy(X.astype(np.float32))
-    y = torch.from_numpy(y.astype(np.int64))
+    if torch.cuda.device_count() > 1:
+        model = nn.DistributedDataParallel(model)
+    model.to(device)
+    X = torch.from_numpy(X.astype(np.float32)).to(device)
+    y = torch.from_numpy(y.astype(np.int64)).to(device)
     optimizer = torch.optim.SGD(model.parameters(),
                                 lr=1e-1,
                                 weight_decay=1e-5,
