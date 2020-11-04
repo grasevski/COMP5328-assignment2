@@ -8,6 +8,7 @@ from typing import Callable, List, Tuple
 import lightgbm as lgb
 import numpy as np
 from scipy.special import softmax
+from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import train_test_split
 import torch
 import torch.nn as nn
@@ -168,6 +169,7 @@ MODEL = {
     'forward_three_layer': Forward(three_layer),
     'backward_three_layer': Backward(NeuralNet(three_layer)),
     'LGB': Backward(lgb.LGBMClassifier()),
+    'logistic': Backward(LogisticRegression()),
 }
 
 if __name__ == '__main__':
