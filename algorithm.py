@@ -207,8 +207,8 @@ def neural_net(
     build: Net
 ) -> Callable[[np.ndarray, np.ndarray, np.ndarray, np.ndarray], NeuralNet]:
     """Wrap pytorch network in generic train function."""
-    return lambda X, y, X_val, y_val: NeuralNet(
-        train_nn(build, X, y, lambda x: x, X_val, y_val))
+    return lambda params, X, y, X_val, y_val: NeuralNet(
+        train_nn(build, params, X, y, lambda x: x, X_val, y_val))
 
 
 def linear(in_dim: int, out_dim: int, _: Dict[str, any]) -> nn.Module:
