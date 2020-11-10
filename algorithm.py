@@ -167,10 +167,7 @@ def train_nn(build: Net, params: Dict[str, any], X: np.ndarray, y: np.ndarray,
     device = xm.xla_device(
     ) if 'COLAB_TPU_ADDR' in os.environ else 'cuda' if torch.cuda.is_available(
     ) else 'cpu'
-    model = build(X.shape[1], max(y) + 1, params)
-    if torch.cuda.device_count() > 1:
-        model = nn.DistributedDataParallel(model)
-    model = model.to(device)
+    model = build(X.shape[1], max(y) + 1, params).to(device)
     X = torch.from_numpy(X).to(device)
     y = torch.from_numpy(y).to(device)
     X_val = torch.from_numpy(X_val).to(device)
