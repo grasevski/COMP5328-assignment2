@@ -154,7 +154,7 @@ class Forward:
                  denoise: bool = False) -> np.ndarray:
         """Predict, using transition matrix as necessary."""
         with torch.no_grad():
-            ret = softmax(self._model(torch.from_numpy(X)).numpy(), axis=1)
+            ret = softmax(self._model(torch.from_numpy(X).to(device)).numpy(), axis=1)
         if not denoise:
             ret = softmax(T @ ret.T, axis=0).T
         return ret
@@ -211,7 +211,7 @@ class NeuralNet:
     def __call__(self, X: np.ndarray) -> np.ndarray:
         """Numpy prediction interface."""
         with torch.no_grad():
-            return softmax(self._model(torch.from_numpy(X)).numpy(), axis=1)
+            return softmax(self._model(torch.from_numpy(X).to(device)).numpy(), axis=1)
 
 
 def neural_net(
