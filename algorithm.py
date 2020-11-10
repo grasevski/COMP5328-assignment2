@@ -178,7 +178,7 @@ def train_nn(build: Net, params: Dict[str, any], X: np.ndarray, y: np.ndarray,
                                 momentum=0.9)
     train_loader = torch.utils.data.DataLoader(torch.utils.data.TensorDataset(
         X, y),
-                                               batch_size=256,
+                                               batch_size=1024,
                                                shuffle=True)
     criterion = nn.CrossEntropyLoss()
     best = 0
