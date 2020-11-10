@@ -251,7 +251,7 @@ def evaluate(params: Dict[str, any]) -> Tuple[float, float]:
     return acc_val, acc
 
 
-def train(_: argparse.Namespace) -> None:
+def train() -> None:
     """Output evaluation results in csv format."""
     w = csv.DictWriter(
         sys.stdout,
@@ -295,7 +295,7 @@ def load(
     return Xtr, Str, T, Xtr_val, Str_val, Xts, Yts
 
 
-def tune(_: argparse.Namespace) -> None:
+def tune() -> None:
     """Output optimal hyperparams in jsonl format."""
     optuna.logging.set_verbosity(optuna.logging.WARNING)
     w = jsonlines.Writer(sys.stdout, flush=True)
@@ -312,14 +312,12 @@ def tune(_: argparse.Namespace) -> None:
 
 def main() -> None:
     """Run all training and evaluation."""
-    parser = argparse.ArgumentParser(
-        description=__doc__,
-        formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    subparsers = parser.add_subparsers()
-    subparsers.add_parser('tune', help=tune.__doc__).set_defaults(func=tune)
-    subparsers.add_parser('train', help=train.__doc__).set_defaults(func=train)
-    args = parser.parse_args()
-    args.func(args)
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('-t', '--tune', help=tune.__doc__, action='store_true')
+    if parser.parse_args().tune:
+        tune()
+        return
+    train()
 
 
 DATA = {
