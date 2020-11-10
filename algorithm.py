@@ -138,6 +138,7 @@ class Forward:
     def train(self, params: Dict[str, any], X: np.ndarray, y: np.ndarray,
               T: np.ndarray, X_val: np.ndarray, y_val: np.ndarray) -> None:
         """Train with hyperparams and early stopping on validation set."""
+        import pdb; pdb.set_trace()
         T = torch.from_numpy(T).to(device)
         sm = nn.Softmax(dim=1).to(device)
         self._model = train_nn(self._build, params, X, y,
