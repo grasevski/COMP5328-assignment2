@@ -170,7 +170,7 @@ def train_nn(build: Net, params: Dict[str, any], X: np.ndarray, y: np.ndarray,
     model = build(X.shape[1], max(y) + 1, params)
     if torch.cuda.device_count() > 1:
         model = nn.DistributedDataParallel(model)
-    model.to(device)
+    model = model.to(device)
     X = torch.from_numpy(X).to(device)
     y = torch.from_numpy(y).to(device)
     X_val = torch.from_numpy(X_val).to(device)
