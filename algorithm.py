@@ -21,6 +21,15 @@ from sklearn.model_selection import train_test_split
 import torch
 import torch.nn as nn
 
+if 'COLAB_TPU_ADDR' in os.environ:
+    import torch_xla
+    import torch_xla.core.xla_model as xm
+    device = xm.xla_device()
+elif torch.cuda.is_available():
+    device = 'cuda'
+else:
+    device = 'cpu'
+
 Model = Callable[[np.ndarray], np.ndarray]
 Trainer = Callable[
     [Dict[str, any], np.ndarray, np.ndarray, np.ndarray, np.ndarray], Model]
@@ -155,7 +164,9 @@ def train_nn(build: Net, params: Dict[str, any], X: np.ndarray, y: np.ndarray,
              transform: Callable[[torch.Tensor], torch.Tensor],
              X_val: np.ndarray, y_val: np.ndarray) -> nn.Module:
     """SGD with early stopping on validation set."""
-    device = 'cuda' if torch.cuda.is_available() else 'cpu'
+    device = xm.xla_device(
+    ) if 'COLAB_TPU_ADDR' in os.environ else 'cuda' if torch.cuda.is_available(
+    ) else 'cpu'
     model = build(X.shape[1], max(y) + 1, params)
     if torch.cuda.device_count() > 1:
         model = nn.DistributedDataParallel(model)
