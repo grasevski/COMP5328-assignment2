@@ -252,12 +252,12 @@ def evaluate(params: Dict[str, any]) -> Tuple[float, float]:
 
 
 def train(_: argparse.Namespace) -> None:
-    """Read hyperparams from stdin and output evaluation in csv format."""
+    """Output evaluation results in csv format."""
     w = csv.DictWriter(
         sys.stdout,
         ['ts', 'dataset', 'model', 'acc_val', 'acc_val_std', 'acc', 'acc_std'])
     w.writeheader()
-    for params in jsonlines.Reader(sys.stdin):
+    for params in PARAMS:
         reset_seed()
         acc_val, acc = [], []
         for i in range(10):
@@ -334,6 +334,120 @@ MODEL = {
     'lgb': Backward(lgbm, lgbm_tune),
     'logistic': Backward(logistic_regression, logistic_regression_tune),
 }
+PARAMS = [
+    {
+        "ts": "2020-11-09 21:27:04.115906",
+        "dataset": "FashionMNIST0.5",
+        "model": "forward_linear",
+        "params": {}
+    },
+    {
+        "ts": "2020-11-09 21:27:04.184178",
+        "dataset": "FashionMNIST0.5",
+        "model": "backward_linear",
+        "params": {}
+    },
+    {
+        "ts": "2020-11-09 21:27:04.235472",
+        "dataset": "FashionMNIST0.5",
+        "model": "forward_three_layer",
+        "params": {}
+    },
+    {
+        "ts": "2020-11-09 21:27:04.288037",
+        "dataset": "FashionMNIST0.5",
+        "model": "backward_three_layer",
+        "params": {}
+    },
+    {
+        "ts": "2020-11-09 21:27:04.339063",
+        "dataset": "FashionMNIST0.5",
+        "model": "lgb",
+        "params": {
+            "objective": "softmax",
+            "metric": "multi_logloss",
+            "verbosity": -1,
+            "force_row_wise": True,
+            "num_class": 3,
+            "feature_pre_filter": False,
+            "lambda_l1": 0.00010308565871016856,
+            "lambda_l2": 9.262909768209701e-05,
+            "num_leaves": 9,
+            "feature_fraction": 0.9520000000000001,
+            "bagging_fraction": 0.9478399337923673,
+            "bagging_freq": 1,
+            "min_child_samples": 20,
+            "num_iterations": 1000,
+            "early_stopping_round": 1
+        }
+    },
+    {
+        "ts": "2020-11-09 21:30:08.050028",
+        "dataset": "FashionMNIST0.5",
+        "model": "logistic",
+        "params": {
+            "C": 0.000757356598665866,
+            "solver": "liblinear",
+            "multi_class": "ovr"
+        }
+    },
+    {
+        "ts": "2020-11-09 22:22:57.713244",
+        "dataset": "FashionMNIST0.6",
+        "model": "forward_linear",
+        "params": {}
+    },
+    {
+        "ts": "2020-11-09 22:22:57.784873",
+        "dataset": "FashionMNIST0.6",
+        "model": "backward_linear",
+        "params": {}
+    },
+    {
+        "ts": "2020-11-09 22:22:57.843417",
+        "dataset": "FashionMNIST0.6",
+        "model": "forward_three_layer",
+        "params": {}
+    },
+    {
+        "ts": "2020-11-09 22:22:57.899029",
+        "dataset": "FashionMNIST0.6",
+        "model": "backward_three_layer",
+        "params": {}
+    },
+    {
+        "ts": "2020-11-09 22:22:57.958981",
+        "dataset": "FashionMNIST0.6",
+        "model": "lgb",
+        "params": {
+            "objective": "softmax",
+            "metric": "multi_logloss",
+            "verbosity": -1,
+            "force_row_wise": True,
+            "num_class": 3,
+            "feature_pre_filter": False,
+            "lambda_l1": 0.0,
+            "lambda_l2": 0.0,
+            "num_leaves": 3,
+            "feature_fraction": 0.8,
+            "bagging_fraction": 0.9054039912511501,
+            "bagging_freq": 3,
+            "min_child_samples": 20,
+            "num_iterations": 1000,
+            "early_stopping_round": 1
+        }
+    },
+    {
+        "ts": "2020-11-09 22:24:15.015987",
+        "dataset": "FashionMNIST0.6",
+        "model": "logistic",
+        "params": {
+            "C": 0.0005710289362229364,
+            "solver": "saga",
+            "multi_class": "auto"
+        }
+    },
+]
 
 if __name__ == '__main__':
     main()
