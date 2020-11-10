@@ -249,33 +249,44 @@ def reset_seed(seed: int = 0):
     torch.backends.cudnn.deterministic = True
 
 
+def estimate_transition_matrix(model, T: np.ndarray, X: np.ndarray) -> np.ndarray:
+    """Estimate anchor points to generate transition matrix."""
+    p = model(X, T)
+    return np.hstack([p[i][np.newaxis].T for i in p.argmax(axis=0)])
+
+
 def evaluate(params: Dict[str, any]) -> Tuple[float, float]:
     """Run one evaluation round."""
     Xtr, Str, T, Xtr_val, Str_val, Xts, Yts = load(params['dataset'])
     model = MODEL[params['model']]
     model.train(params['params'], Xtr, Str, T, Xtr_val, Str_val)
+    T_hat = estimate_transition_matrix(model, T, Xtr)
+    print(T_hat)
     acc_val = top1_accuracy(model(Xtr_val, T), Str_val)
     acc = top1_accuracy(model(Xts, T, True), Yts)
-    return acc_val, acc
+    return T_hat, acc_val, acc
 
 
 def train() -> None:
     """Output evaluation results in csv format."""
     w = csv.DictWriter(
         sys.stdout,
-        ['ts', 'dataset', 'model', 'acc_val', 'acc_val_std', 'acc', 'acc_std'])
+        ['ts', 'dataset', 'model', 'T_hat', 'T_hat_std', 'acc_val', 'acc_val_std', 'acc', 'acc_std'])
     w.writeheader()
     for params in PARAMS:
         reset_seed()
-        acc_val, acc = [], []
+        T_hat, acc_val, acc = [], [], []
         for i in range(10):
-            v, a = evaluate(params)
+            T, v, a = evaluate(params)
+            T_hat.append(T)
             acc_val.append(v)
             acc.append(a)
         w.writerow({
             'ts': str(datetime.datetime.now()),
             'dataset': params['dataset'],
             'model': params['model'],
+            'T_hat': np.mean(T_hat),
+            'T_hat_std': np.std(T_hat),
             'acc_val': np.mean(acc_val),
             'acc_val_std': np.std(acc_val),
             'acc': np.mean(acc),
@@ -341,30 +352,30 @@ MODEL = {
     'logistic': Backward(logistic_regression, logistic_regression_tune),
 }
 PARAMS = [
-    {
-        "ts": "2020-11-09 21:27:04.115906",
-        "dataset": "FashionMNIST0.5",
-        "model": "forward_linear",
-        "params": {}
-    },
-    {
-        "ts": "2020-11-09 21:27:04.184178",
-        "dataset": "FashionMNIST0.5",
-        "model": "backward_linear",
-        "params": {}
-    },
-    {
-        "ts": "2020-11-09 21:27:04.235472",
-        "dataset": "FashionMNIST0.5",
-        "model": "forward_three_layer",
-        "params": {}
-    },
-    {
-        "ts": "2020-11-09 21:27:04.288037",
-        "dataset": "FashionMNIST0.5",
-        "model": "backward_three_layer",
-        "params": {}
-    },
+#    {
+#        "ts": "2020-11-09 21:27:04.115906",
+#        "dataset": "FashionMNIST0.5",
+#        "model": "forward_linear",
+#        "params": {}
+#    },
+#    {
+#        "ts": "2020-11-09 21:27:04.184178",
+#        "dataset": "FashionMNIST0.5",
+#        "model": "backward_linear",
+#        "params": {}
+#    },
+#    {
+#        "ts": "2020-11-09 21:27:04.235472",
+#        "dataset": "FashionMNIST0.5",
+#        "model": "forward_three_layer",
+#        "params": {}
+#    },
+#    {
+#        "ts": "2020-11-09 21:27:04.288037",
+#        "dataset": "FashionMNIST0.5",
+#        "model": "backward_three_layer",
+#        "params": {}
+#    },
     {
         "ts": "2020-11-09 21:27:04.339063",
         "dataset": "FashionMNIST0.5",
