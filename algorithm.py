@@ -153,6 +153,7 @@ class Forward:
                  T: np.ndarray,
                  denoise: bool = False) -> np.ndarray:
         """Predict, using transition matrix as necessary."""
+        import pdb; pdb.set_trace()
         with torch.no_grad():
             ret = softmax(self._model(torch.from_numpy(X).to(device)).numpy(), axis=1)
         if not denoise:
