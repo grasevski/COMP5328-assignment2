@@ -36,9 +36,6 @@ Trainer = Callable[
 Tuner = Callable[[np.ndarray, np.ndarray, np.ndarray, np.ndarray], Dict[str,
                                                                         any]]
 Net = Callable[[int, int, Dict[str, any]], nn.Module]
-NNTuner = Callable[
-    [np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray], Dict[str,
-                                                                       any]]
 
 
 class Backward:
@@ -47,24 +44,22 @@ class Backward:
         """Training and tuning interface."""
         self._train, self._tune = trainer, tuner
 
-    def train(self, params: Dict[str, any], X: np.ndarray, y: np.ndarray,
-              _: np.ndarray, X_val: np.ndarray, y_val: np.ndarray) -> None:
+    def train(self, params: Dict[str, any], X: np.ndarray, y: np.ndarray, X_val: np.ndarray, y_val: np.ndarray, _: np.ndarray) -> None:
         """Train and validate using given hyperparams."""
         self._model = self._train(params, X, y, X_val, y_val)
 
-    def tune(self, X: np.ndarray, y: np.ndarray, _: np.ndarray,
-             X_val: np.ndarray, y_val: np.ndarray) -> Dict[str, any]:
+    def tune(self, X: np.ndarray, y: np.ndarray, X_val: np.ndarray, y_val: np.ndarray) -> Dict[str, any]:
         """Find optimal hyperparams for given train/val split."""
         return self._tune(X, y, X_val, y_val) if self._tune else {}
 
     def __call__(self,
                  X: np.ndarray,
-                 T: np.ndarray,
+                 T: np.ndarray = None,
                  denoise: bool = False) -> np.ndarray:
         """Predict, with flag to indicate whether to denoise."""
         ret = self._model(X)
         if denoise:
-            ret = softmax(np.linalg.inv(T) @ ret.T, axis=0).T
+            ret = softmax(np.linalg.pinv(T) @ ret.T, axis=0).T
         return ret
 
 
@@ -125,37 +120,38 @@ def logistic_regression_tune(X: np.ndarray, y: np.ndarray, X_val: np.ndarray,
     """Hyperparam tuning using generic optuna integration."""
     study = optuna.create_study(direction='maximize')
     f = functools.partial(logistic_regression_objective, X, y, X_val, y_val)
-    study.optimize(f, n_trials=100)
+    study.optimize(f, n_trials=100, n_jobs=-1)
     return study.best_params
 
 
 class Forward:
     """Append transition matrix to neural network during training."""
-    def __init__(self, build: Net, tuner: NNTuner = None):
+    def __init__(self, build: Net, tuner: Tuner = None):
         """Wrap neural net architecture in generic interface."""
         self._build, self._tune = build, tuner
 
-    def train(self, params: Dict[str, any], X: np.ndarray, y: np.ndarray,
-              T: np.ndarray, X_val: np.ndarray, y_val: np.ndarray) -> None:
+    def train(self, params: Dict[str, any], X: np.ndarray, y: np.ndarray, X_val: np.ndarray, y_val: np.ndarray, T: np.ndarray = None) -> None:
         """Train with hyperparams and early stopping on validation set."""
+        if T is None:
+            self._model = train_nn(self._build, params, X, y, lambda x: x, X_val, y_val)
+            return
         T = torch.from_numpy(T).to(device)
         sm = nn.Softmax(dim=1).to(device)
         self._model = train_nn(self._build, params, X, y,
                                lambda x, T=T: sm(T @ sm(x).T).T, X_val, y_val)
 
-    def tune(self, X: np.ndarray, y: np.ndarray, T: np.ndarray,
-             X_val: np.ndarray, y_val: np.ndarray) -> Dict[str, any]:
+    def tune(self, X: np.ndarray, y: np.ndarray, X_val: np.ndarray, y_val: np.ndarray) -> Dict[str, any]:
         """Find optimal hyperparams for neural net."""
-        return self._tune(X, y, T, X_val, y_val) if self._tune else {}
+        return self._tune(X, y, X_val, y_val) if self._tune else {}
 
     def __call__(self,
                  X: np.ndarray,
-                 T: np.ndarray,
+                 T: np.ndarray = None,
                  denoise: bool = False) -> np.ndarray:
         """Predict, using transition matrix as necessary."""
         with torch.no_grad():
             ret = softmax(self._model(torch.from_numpy(X).to(device)).cpu().numpy(), axis=1)
-        if not denoise:
+        if T is not None and not denoise:
             ret = softmax(T @ ret.T, axis=0).T
         return ret
 
@@ -164,9 +160,6 @@ def train_nn(build: Net, params: Dict[str, any], X: np.ndarray, y: np.ndarray,
              transform: Callable[[torch.Tensor], torch.Tensor],
              X_val: np.ndarray, y_val: np.ndarray) -> nn.Module:
     """SGD with early stopping on validation set."""
-    device = xm.xla_device(
-    ) if 'COLAB_TPU_ADDR' in os.environ else 'cuda' if torch.cuda.is_available(
-    ) else 'cpu'
     model = build(X.shape[1], max(y) + 1, params).to(device)
     X = torch.from_numpy(X).to(device)
     y = torch.from_numpy(y).to(device)
@@ -211,12 +204,9 @@ class NeuralNet:
             return softmax(self._model(torch.from_numpy(X).to(device)).cpu().numpy(), axis=1)
 
 
-def neural_net(
-    build: Net
-) -> Callable[[np.ndarray, np.ndarray, np.ndarray, np.ndarray], NeuralNet]:
+def neural_net(build: Net) -> Callable[[Dict[str, any], np.ndarray, np.ndarray, np.ndarray, np.ndarray], NeuralNet]:
     """Wrap pytorch network in generic train function."""
-    return lambda params, X, y, X_val, y_val: NeuralNet(
-        train_nn(build, params, X, y, lambda x: x, X_val, y_val))
+    return lambda params, X, y, X_val, y_val: NeuralNet(train_nn(build, params, X, y, lambda x: x, X_val, y_val))
 
 
 def linear(in_dim: int, out_dim: int, _: Dict[str, any]) -> nn.Module:
@@ -249,48 +239,47 @@ def reset_seed(seed: int = 0):
     torch.backends.cudnn.deterministic = True
 
 
-def estimate_transition_matrix(model, T: np.ndarray, X: np.ndarray) -> np.ndarray:
+def estimate_transition_matrix(model, X: np.ndarray) -> np.ndarray:
     """Estimate anchor points to generate transition matrix."""
-    p = model(X, T)
+    p = model(X)
     return np.hstack([p[i][np.newaxis].T for i in p.argmax(axis=0)])
 
 
 def evaluate(params: Dict[str, any]) -> Tuple[float, float]:
     """Run one evaluation round."""
-    Xtr, Str, T, Xtr_val, Str_val, Xts, Yts = load(params['dataset'])
+    Xtr, Str, Xtr_val, Str_val, T, Xts, Yts = load(params['dataset'])
     model = MODEL[params['model']]
-    model.train(params['params'], Xtr, Str, T, Xtr_val, Str_val)
-    T_hat = estimate_transition_matrix(model, T, Xtr)
-    print(T_hat)
-    acc_val = top1_accuracy(model(Xtr_val, T), Str_val)
-    acc = top1_accuracy(model(Xts, T, True), Yts)
-    return T_hat, acc_val, acc
+    model.train(params['params'], Xtr, Str, Xtr_val, Str_val, T)
+    ret = {}
+    ret['acc_val'] = top1_accuracy(model(Xtr_val, T), Str_val)
+    ret['acc'] = top1_accuracy(model(Xts, T, True), Yts)
+    if isinstance(model, Forward):
+        model.train(params['params'], Xtr, Str, Xtr_val, Str_val)
+    ret['T_hat'] = estimate_transition_matrix(model, Xtr)
+    if isinstance(model, Forward):
+        model.train(params['params'], Xtr, Str, Xtr_val, Str_val, ret['T_hat'])
+    ret['T_hat_err'] = np.linalg.norm(T - ret['T_hat'])
+    ret['acc_val_hat'] = top1_accuracy(model(Xtr_val, ret['T_hat']), Str_val)
+    ret['acc_hat'] = top1_accuracy(model(Xts, ret['T_hat'], True), Yts)
+    return ret
 
 
 def train() -> None:
-    """Output evaluation results in csv format."""
-    w = csv.DictWriter(
-        sys.stdout,
-        ['ts', 'dataset', 'model', 'T_hat', 'T_hat_std', 'acc_val', 'acc_val_std', 'acc', 'acc_std'])
+    """Run training and output evaluation results in csv format."""
+    keys = ['acc_val', 'acc', 'acc_val_hat', 'acc_hat', 'T_hat_err', 'T_hat']
+    headers = ['ts', 'dataset', 'model'] + keys + [f'{k}_std' for k in keys]
+    w = csv.DictWriter(sys.stdout, headers)
     w.writeheader()
     for params in PARAMS:
         reset_seed()
-        T_hat, acc_val, acc = [], [], []
-        for i in range(10):
-            T, v, a = evaluate(params)
-            T_hat.append(T)
-            acc_val.append(v)
-            acc.append(a)
+        results = [evaluate(params) for _ in range(10)]
+        u = {k: np.mean([r[k] for r in results], axis=0) for k in keys}
+        x = {f'{k}_std': np.std([r[k] for r in results], axis=0) for k in keys}
         w.writerow({
             'ts': str(datetime.datetime.now()),
             'dataset': params['dataset'],
             'model': params['model'],
-            'T_hat': np.mean(T_hat),
-            'T_hat_std': np.std(T_hat),
-            'acc_val': np.mean(acc_val),
-            'acc_val_std': np.std(acc_val),
-            'acc': np.mean(acc),
-            'acc_std': np.std(acc),
+            **u, **x
         })
 
 
@@ -311,21 +300,21 @@ def load(
                                                       test_size=0.2)
         Yts = data['Yts'].astype(np.int64)
     T = np.array(DATA[dataset], dtype=np.float32)
-    return Xtr, Str, T, Xtr_val, Str_val, Xts, Yts
+    return Xtr, Str, Xtr_val, Str_val, T, Xts, Yts
 
 
 def tune() -> None:
-    """Output optimal hyperparams in jsonl format."""
+    """Run hyperparam tuning and output params in jsonl format."""
     optuna.logging.set_verbosity(optuna.logging.WARNING)
     w = jsonlines.Writer(sys.stdout, flush=True)
     for dataset, (name, model) in itertools.product(DATA, MODEL.items()):
         reset_seed()
-        Xtr, Str, T, Xtr_val, Str_val, _, _ = load(dataset)
+        Xtr, Str, Xtr_val, Str_val, _, _, _ = load(dataset)
         w.write({
             'ts': str(datetime.datetime.now()),
             'dataset': dataset,
             'model': name,
-            'params': model.tune(Xtr, Str, T, Xtr_val, Str_val)
+            'params': model.tune(Xtr, Str, Xtr_val, Str_val)
         })
 
 
@@ -342,6 +331,7 @@ def main() -> None:
 DATA = {
     'FashionMNIST0.5': [[0.5, 0.2, 0.3], [0.3, 0.5, 0.2], [0.2, 0.3, 0.5]],
     'FashionMNIST0.6': [[0.4, 0.3, 0.3], [0.3, 0.4, 0.3], [0.3, 0.3, 0.4]],
+    'CIFAR': [[1, 0, 0], [0, 1, 0], [0, 0, 1]],
 }
 MODEL = {
     'forward_linear': Forward(linear),
@@ -352,30 +342,30 @@ MODEL = {
     'logistic': Backward(logistic_regression, logistic_regression_tune),
 }
 PARAMS = [
-#    {
-#        "ts": "2020-11-09 21:27:04.115906",
-#        "dataset": "FashionMNIST0.5",
-#        "model": "forward_linear",
-#        "params": {}
-#    },
-#    {
-#        "ts": "2020-11-09 21:27:04.184178",
-#        "dataset": "FashionMNIST0.5",
-#        "model": "backward_linear",
-#        "params": {}
-#    },
-#    {
-#        "ts": "2020-11-09 21:27:04.235472",
-#        "dataset": "FashionMNIST0.5",
-#        "model": "forward_three_layer",
-#        "params": {}
-#    },
-#    {
-#        "ts": "2020-11-09 21:27:04.288037",
-#        "dataset": "FashionMNIST0.5",
-#        "model": "backward_three_layer",
-#        "params": {}
-#    },
+    {
+        "ts": "2020-11-09 21:27:04.115906",
+        "dataset": "FashionMNIST0.5",
+        "model": "forward_linear",
+        "params": {}
+    },
+    {
+        "ts": "2020-11-09 21:27:04.184178",
+        "dataset": "FashionMNIST0.5",
+        "model": "backward_linear",
+        "params": {}
+    },
+    {
+        "ts": "2020-11-09 21:27:04.235472",
+        "dataset": "FashionMNIST0.5",
+        "model": "forward_three_layer",
+        "params": {}
+    },
+    {
+        "ts": "2020-11-09 21:27:04.288037",
+        "dataset": "FashionMNIST0.5",
+        "model": "backward_three_layer",
+        "params": {}
+    },
     {
         "ts": "2020-11-09 21:27:04.339063",
         "dataset": "FashionMNIST0.5",
