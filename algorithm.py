@@ -221,15 +221,15 @@ class NeuralNet:
             'progress_bar_refresh_rate': 0,
             'weights_summary': None,
         }
-        if device == 'tpu':
-            params['accelerator'] = 'ddp'
-            params['precision'] = 16
-            params['tpu_cores'] = 8
-        elif device == 'cuda':
+        if device == 'cuda':
             params['accelerator'] = 'ddp'
             params['auto_select_gpus'] = True
             params['gpus'] = -1
             params['precision'] = 16
+        elif device != 'cpu':
+            params['accelerator'] = 'ddp'
+            params['precision'] = 16
+            params['tpu_cores'] = 8
         trainer = pl.Trainer(**params)
         train_dl = NeuralNet._data_loader(X, y)
         val_dl = NeuralNet._data_loader(X_val, y_val)
