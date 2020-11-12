@@ -34,6 +34,13 @@ Net = Callable[[int, int, Params], nn.Module]
 Transform = Callable[[Tensor], Tensor]
 Tuner = Callable[[int, int, Trial], Params]
 
+if 'TPU_NAME' in os.environ:
+    device = 'tpu'
+elif torch.cuda.is_available():
+    device = 'cuda'
+else:
+    device = 'cpu'
+
 
 class Backward:
     """Use inverse transition matrix to denoise."""
@@ -213,11 +220,11 @@ class NeuralNet:
             'progress_bar_refresh_rate': 0,
             'weights_summary': None,
         }
-        if 'TPU_NAME' in os.environ:
+        if device == 'tpu':
             params['accelerator'] = 'ddp'
             params['precision'] = 16
             params['tpu_cores'] = 8
-        elif torch.cuda.is_available():
+        elif device == 'cuda':
             params['accelerator'] = 'ddp'
             params['auto_select_gpus'] = True
             params['gpus'] = -1
@@ -257,7 +264,7 @@ class Forward:
         if T is None:
             NeuralNet.do_training(self._model, X, y, X_val, y_val)
             return
-        T = from_numpy(T)
+        T = from_numpy(T).to(device)
         sm = nn.Softmax(dim=1)
 
         def transform(x: Tensor, T: Tensor = T) -> Tensor:
