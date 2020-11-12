@@ -208,7 +208,7 @@ class NeuralNet:
             'callbacks': callbacks + [EarlyStopping('val_acc')],
             'checkpoint_callback': False,
             'deterministic': True,
-            'fast_dev_run': True,
+            'fast_dev_run': FAST_DEV_RUN,
             'logger': False,
             'progress_bar_refresh_rate': 0,
             'weights_summary': None,
@@ -449,6 +449,7 @@ def main() -> None:
     train()
 
 
+FAST_DEV_RUN = True
 KEYS = ['acc_val', 'acc', 'acc_val_hat', 'acc_hat', 'T_hat_err', 'T_hat']
 DATA = {
     'FashionMNIST0.5': [[0.5, 0.2, 0.3], [0.3, 0.5, 0.2], [0.2, 0.3, 0.5]],
