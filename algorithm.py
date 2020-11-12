@@ -602,7 +602,8 @@ def load(
         Xtr, Xts = data['Xtr'], data['Xts']
         Str, Yts = data['Str'].astype(np.int64), data['Yts'].astype(np.int64)
         Xtr, Xtr_val, Str, Str_val = train_test_split(Xtr, Str, test_size=0.2)
-    T = np.array(DATA[dataset]).astype(np.float32)
+    dtype = np.float32 if DEVICE == 'cpu' else np.float16
+    T = np.array(DATA[dataset], dtype=dtype)
     return Xtr, Str, Xtr_val, Str_val, T, Xts, Yts
 
 
