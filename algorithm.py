@@ -35,7 +35,8 @@ Transform = Callable[[Tensor], Tensor]
 Tuner = Callable[[int, int, Trial], Params]
 
 if 'TPU_NAME' in os.environ:
-    device = 'tpu'
+    import torch_xla.core.xla_model as xm
+    device = xm.xla_device()
 elif torch.cuda.is_available():
     device = 'cuda'
 else:
