@@ -477,7 +477,10 @@ TPU_CORES = 8
 # Set this to True to do a "quick" training, for testing purposes
 FAST_DEV_RUN = False
 
+# Evaluation metrics.
 KEYS = ['acc_val', 'acc', 'acc_val_hat', 'acc_hat', 'T_hat_err', 'T_hat']
+
+# Datasets and corresponding transition matrices.
 DATA = OrderedDict([
     ('FashionMNIST0.5', [[0.5, 0.2, 0.3], [0.3, 0.5, 0.2], [0.2, 0.3, 0.5]]),
     ('FashionMNIST0.6', [[0.4, 0.3, 0.3], [0.3, 0.4, 0.3], [0.3, 0.3, 0.4]]),
