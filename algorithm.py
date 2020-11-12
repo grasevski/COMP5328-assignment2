@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Build transition matrix estimator and classifiers."""
 import argparse
+from collections import OrderedDict
 import copy
 import csv
 import datetime
@@ -33,6 +34,20 @@ Params = Dict[str, any]
 Net = Callable[[int, int, Params], nn.Module]
 Transform = Callable[[Tensor], Tensor]
 Tuner = Callable[[int, int, Trial], Params]
+
+
+class ResNet(nn.Module):
+    """Johns classifier."""
+    def __init__(self, in_dim: int, out_dim: int, _: Params):
+        """Initialize model based on input and output dimensions."""
+        super().__init__()
+        # TODO Johns code goes here
+        self._model = nn.Linear(in_dim, out_dim)
+
+    def forward(self, x: Tensor) -> Tensor:
+        """Evaluate model."""
+        # TODO Johns code goes here
+        return self._model(x)
 
 
 class Backward:
@@ -297,8 +312,8 @@ class MetricsCallback(pl.Callback):
 class NeuralNetWrapper(pl.LightningModule):
     """Use pytorch lightning interface for multicore training."""
     def __init__(self, model: nn.Module, transform: Optional[Transform]):
-        super().__init__()
         """Wrap pytorch model in lightning interface."""
+        super().__init__()
         self._model, self._transform = model, transform
 
     def forward(self, x: Tensor) -> Tensor:
@@ -448,6 +463,7 @@ def main() -> None:
         return
     train()
 
+
 if 'TPU_NAME' in os.environ:
     DEVICE = 'xla'
 elif torch.cuda.is_available():
@@ -455,35 +471,62 @@ elif torch.cuda.is_available():
 else:
     DEVICE = 'cpu'
 
-TPU_CORES = 1
+# This can be changed to 1 if it doesnt work on colab
+TPU_CORES = 8
+
+# Set this to True to do a "quick" training, for testing purposes
 FAST_DEV_RUN = False
+
 KEYS = ['acc_val', 'acc', 'acc_val_hat', 'acc_hat', 'T_hat_err', 'T_hat']
-DATA = {
-    'FashionMNIST0.5': [[0.5, 0.2, 0.3], [0.3, 0.5, 0.2], [0.2, 0.3, 0.5]],
-    'FashionMNIST0.6': [[0.4, 0.3, 0.3], [0.3, 0.4, 0.3], [0.3, 0.3, 0.4]],
-    'CIFAR': [[1, 0, 0], [0, 1, 0], [0, 0, 1]],
-}
-MODEL = {
-    'linear': Forward(linear),
-    'three_layer': Forward(ThreeLayer.build, ThreeLayer.tune),
-    'lgb': Lgbm,
-    'logistic': LR,
-}
+DATA = OrderedDict([
+    ('FashionMNIST0.5', [[0.5, 0.2, 0.3], [0.3, 0.5, 0.2], [0.2, 0.3, 0.5]]),
+    ('FashionMNIST0.6', [[0.4, 0.3, 0.3], [0.3, 0.4, 0.3], [0.3, 0.3, 0.4]]),
+    ('CIFAR', [[1, 0, 0], [0, 1, 0], [0, 0, 1]]),
+])
+
+# This defines the classification algorithms to evaluate.
+# Put your classifier in this map to have it run in the
+# training/tuning.
+MODEL = OrderedDict([
+    ('resnet', Forward(ResNet)),
+    #    ('linear', Forward(linear)),
+    #    ('three_layer', Forward(ThreeLayer.build, ThreeLayer.tune)),
+    ('lgb', Lgbm),
+    #    ('logistic', LR),
+])
+
+# This defines which (dataset, model, params) combinations to train
+# and evaluate. Put your config here to have it run in the training.
 PARAMS = [
     {
-        "ts": "2020-11-09 21:27:04.115906",
-        "dataset": "FashionMNIST0.5",
-        "model": "linear",
-        "params": {}
+        'dataset': 'FashionMNIST0.5',
+        'model': 'resnet',
+        'params': {}
     },
     {
-        "ts": "2020-11-09 21:27:04.184178",
-        "dataset": "FashionMNIST0.5",
-        "model": "three_layer",
-        "params": {
-            "hidden_dim": 3
-        }
+        'dataset': 'FashionMNIST0.6',
+        'model': 'resnet',
+        'params': {}
     },
+    {
+        'dataset': 'CIFAR',
+        'model': 'resnet',
+        'params': {}
+    },
+    #    {
+    #        "ts": "2020-11-09 21:27:04.115906",
+    #        "dataset": "FashionMNIST0.5",
+    #        "model": "linear",
+    #        "params": {}
+    #    },
+    #    {
+    #        "ts": "2020-11-09 21:27:04.184178",
+    #        "dataset": "FashionMNIST0.5",
+    #        "model": "three_layer",
+    #        "params": {
+    #            "hidden_dim": 3
+    #        }
+    #    },
     {
         "ts": "2020-11-09 21:27:04.339063",
         "dataset": "FashionMNIST0.5",
@@ -506,30 +549,30 @@ PARAMS = [
             "early_stopping_round": 1
         }
     },
-    {
-        "ts": "2020-11-09 21:30:08.050028",
-        "dataset": "FashionMNIST0.5",
-        "model": "logistic",
-        "params": {
-            "C": 0.000757356598665866,
-            "solver": "liblinear",
-            "multi_class": "ovr"
-        }
-    },
-    {
-        "ts": "2020-11-09 22:22:57.713244",
-        "dataset": "FashionMNIST0.6",
-        "model": "linear",
-        "params": {}
-    },
-    {
-        "ts": "2020-11-09 22:22:57.784873",
-        "dataset": "FashionMNIST0.6",
-        "model": "three_layer",
-        "params": {
-            "hidden_dim": 3
-        }
-    },
+    #    {
+    #        "ts": "2020-11-09 21:30:08.050028",
+    #        "dataset": "FashionMNIST0.5",
+    #        "model": "logistic",
+    #        "params": {
+    #            "C": 0.000757356598665866,
+    #            "solver": "liblinear",
+    #            "multi_class": "ovr"
+    #        }
+    #    },
+    #    {
+    #        "ts": "2020-11-09 22:22:57.713244",
+    #        "dataset": "FashionMNIST0.6",
+    #        "model": "linear",
+    #        "params": {}
+    #    },
+    #    {
+    #        "ts": "2020-11-09 22:22:57.784873",
+    #        "dataset": "FashionMNIST0.6",
+    #        "model": "three_layer",
+    #        "params": {
+    #            "hidden_dim": 3
+    #        }
+    #    },
     {
         "ts": "2020-11-09 22:22:57.958981",
         "dataset": "FashionMNIST0.6",
@@ -552,28 +595,28 @@ PARAMS = [
             "early_stopping_round": 1
         }
     },
-    {
-        "ts": "2020-11-09 22:24:15.015987",
-        "dataset": "FashionMNIST0.6",
-        "model": "logistic",
-        "params": {
-            "C": 0.0005710289362229364,
-            "solver": "saga",
-            "multi_class": "auto"
-        }
-    },
-    {
-        'dataset': 'CIFAR',
-        'model': 'linear',
-        'params': {}
-    },
-    {
-        'dataset': 'CIFAR',
-        'model': 'three_layer',
-        "params": {
-            "hidden_dim": 3
-        }
-    },
+    #    {
+    #        "ts": "2020-11-09 22:24:15.015987",
+    #        "dataset": "FashionMNIST0.6",
+    #        "model": "logistic",
+    #        "params": {
+    #            "C": 0.0005710289362229364,
+    #            "solver": "saga",
+    #            "multi_class": "auto"
+    #        }
+    #    },
+    #    {
+    #        'dataset': 'CIFAR',
+    #        'model': 'linear',
+    #        'params': {}
+    #    },
+    #    {
+    #        'dataset': 'CIFAR',
+    #        'model': 'three_layer',
+    #        "params": {
+    #            "hidden_dim": 3
+    #        }
+    #    },
     {
         "ts": "2020-11-11 12:33:43.689590",
         "dataset": "CIFAR",
@@ -596,16 +639,16 @@ PARAMS = [
             "early_stopping_round": 1
         }
     },
-    {
-        "ts": "2020-11-11 12:49:39.544802",
-        "dataset": "CIFAR",
-        "model": "logistic",
-        "params": {
-            "C": 3987250.7131022774,
-            "solver": "saga",
-            "multi_class": "ovr"
-        }
-    },
+    #    {
+    #        "ts": "2020-11-11 12:49:39.544802",
+    #        "dataset": "CIFAR",
+    #        "model": "logistic",
+    #        "params": {
+    #            "C": 3987250.7131022774,
+    #            "solver": "saga",
+    #            "multi_class": "ovr"
+    #        }
+    #    },
 ]
 
 if __name__ == '__main__':
