@@ -34,14 +34,6 @@ Net = Callable[[int, int, Params], nn.Module]
 Transform = Callable[[Tensor], Tensor]
 Tuner = Callable[[int, int, Trial], Params]
 
-if 'TPU_NAME' in os.environ:
-    import torch_xla.core.xla_model as xm
-    device = xm.xla_device()
-elif torch.cuda.is_available():
-    device = 'cuda'
-else:
-    device = 'cpu'
-
 
 class Backward:
     """Use inverse transition matrix to denoise."""
@@ -221,15 +213,15 @@ class NeuralNet:
             'progress_bar_refresh_rate': 0,
             'weights_summary': None,
         }
-        if device == 'cuda':
+        if DEVICE == 'cuda':
             params['accelerator'] = 'ddp'
             params['auto_select_gpus'] = True
             params['gpus'] = -1
             params['precision'] = 16
-        elif device != 'cpu':
+        elif DEVICE != 'cpu':
             params['accelerator'] = 'ddp'
             params['precision'] = 16
-            params['tpu_cores'] = 8
+            params['tpu_cores'] = TPU_CORES
         trainer = pl.Trainer(**params)
         train_dl = NeuralNet._data_loader(X, y)
         val_dl = NeuralNet._data_loader(X_val, y_val)
@@ -265,7 +257,7 @@ class Forward:
         if T is None:
             NeuralNet.do_training(self._model, X, y, X_val, y_val)
             return
-        T = from_numpy(T).to(device)
+        T = from_numpy(T).to(DEVICE)
         sm = nn.Softmax(dim=1)
 
         def transform(x: Tensor, T: Tensor = T) -> Tensor:
@@ -456,7 +448,14 @@ def main() -> None:
         return
     train()
 
+if 'TPU_NAME' in os.environ:
+    DEVICE = 'xla'
+elif torch.cuda.is_available():
+    DEVICE = 'cuda'
+else:
+    DEVICE = 'cpu'
 
+TPU_CORES = 1
 FAST_DEV_RUN = True
 KEYS = ['acc_val', 'acc', 'acc_val_hat', 'acc_hat', 'T_hat_err', 'T_hat']
 DATA = {
