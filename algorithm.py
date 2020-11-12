@@ -456,7 +456,7 @@ else:
     DEVICE = 'cpu'
 
 TPU_CORES = 1
-FAST_DEV_RUN = True
+FAST_DEV_RUN = False
 KEYS = ['acc_val', 'acc', 'acc_val_hat', 'acc_hat', 'T_hat_err', 'T_hat']
 DATA = {
     'FashionMNIST0.5': [[0.5, 0.2, 0.3], [0.3, 0.5, 0.2], [0.2, 0.3, 0.5]],
