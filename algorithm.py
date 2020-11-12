@@ -22,13 +22,44 @@ from scipy.special import softmax
 from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import train_test_split
 import torch
-from torch import nn, Tensor, from_numpy, no_grad
+from torch import nn, Size, Tensor, from_numpy, no_grad, stack
 import torch.nn.functional as F
 from torch.optim import Optimizer, Adam
 from torch.utils.data import DataLoader, TensorDataset
+from torchvision.transforms.functional import to_tensor
 import pytorch_lightning as pl
 from pytorch_lightning.callbacks import EarlyStopping
 
+if 'TPU_NAME' in os.environ:
+    DEVICE = 'xla'
+elif torch.cuda.is_available():
+    DEVICE = 'cuda'
+else:
+    DEVICE = 'cpu'
+
+# FIXME This can be changed to 1 if it doesnt work on colab.
+TPU_CORES = 8
+
+# FIXME Set this to 'dp' or None if you are getting errors.
+ACCELERATOR = 'ddp'
+
+# Set this to True to do a "quick" training, for testing purposes.
+FAST_DEV_RUN = False
+
+# Evaluation metrics.
+KEYS = ['acc_val', 'acc', 'acc_val_hat', 'acc_hat', 'T_hat_err', 'T_hat']
+
+# Datasets and corresponding transition matrices.
+DATA = OrderedDict([
+    ('FashionMNIST0.5', [[0.5, 0.2, 0.3], [0.3, 0.5, 0.2], [0.2, 0.3, 0.5]]),
+    ('FashionMNIST0.6', [[0.4, 0.3, 0.3], [0.3, 0.4, 0.3], [0.3, 0.3, 0.4]]),
+    ('CIFAR', [[1, 0, 0], [0, 1, 0], [0, 0, 1]]),
+])
+
+# Number of classes in each dataset.
+N_CLASS = 3
+
+# Type declarations.
 Model = Callable[[np.ndarray], np.ndarray]
 Params = Dict[str, any]
 Net = Callable[[int, int, Params], nn.Module]
@@ -36,18 +67,143 @@ Transform = Callable[[Tensor], Tensor]
 Tuner = Callable[[int, int, Trial], Params]
 
 
-class ResNet(nn.Module):
-    """Johns classifier."""
-    def __init__(self, in_dim: int, out_dim: int, _: Params):
-        """Initialize model based on input and output dimensions."""
-        super().__init__()
-        # TODO Johns code goes here
-        self._model = nn.Linear(in_dim, out_dim)
+class BasicBlock(nn.Module):
+    expansion = 1
 
-    def forward(self, x: Tensor) -> Tensor:
-        """Evaluate model."""
-        # TODO Johns code goes here
-        return self._model(x)
+    def __init__(self, in_planes, planes, stride=1):
+        super(BasicBlock, self).__init__()
+        self.conv1 = nn.Conv2d(in_planes,
+                               planes,
+                               kernel_size=3,
+                               stride=stride,
+                               padding=1,
+                               bias=False)
+        self.bn1 = nn.BatchNorm2d(planes)
+        self.conv2 = nn.Conv2d(planes,
+                               planes,
+                               kernel_size=3,
+                               stride=1,
+                               padding=1,
+                               bias=False)
+        self.bn2 = nn.BatchNorm2d(planes)
+
+        self.shortcut = nn.Sequential()
+        if stride != 1 or in_planes != self.expansion * planes:
+            self.shortcut = nn.Sequential(
+                nn.Conv2d(in_planes,
+                          self.expansion * planes,
+                          kernel_size=1,
+                          stride=stride,
+                          bias=False), nn.BatchNorm2d(self.expansion * planes))
+
+    def forward(self, x):
+        out = F.relu(self.bn1(self.conv1(x)))
+        out = self.bn2(self.conv2(out))
+        out += self.shortcut(x)
+        out = F.relu(out)
+        return out
+
+
+class Bottleneck(nn.Module):
+    expansion = 4
+
+    def __init__(self, in_planes, planes, stride=1):
+        super(Bottleneck, self).__init__()
+        self.conv1 = nn.Conv2d(in_planes, planes, kernel_size=1, bias=False)
+        self.bn1 = nn.BatchNorm2d(planes)
+        self.conv2 = nn.Conv2d(planes,
+                               planes,
+                               kernel_size=3,
+                               stride=stride,
+                               padding=1,
+                               bias=False)
+        self.bn2 = nn.BatchNorm2d(planes)
+        self.conv3 = nn.Conv2d(planes,
+                               self.expansion * planes,
+                               kernel_size=1,
+                               bias=False)
+        self.bn3 = nn.BatchNorm2d(self.expansion * planes)
+
+        self.shortcut = nn.Sequential()
+        if stride != 1 or in_planes != self.expansion * planes:
+            self.shortcut = nn.Sequential(
+                nn.Conv2d(in_planes,
+                          self.expansion * planes,
+                          kernel_size=1,
+                          stride=stride,
+                          bias=False), nn.BatchNorm2d(self.expansion * planes))
+
+    def forward(self, x):
+        out = F.relu(self.bn1(self.conv1(x)))
+        out = F.relu(self.bn2(self.conv2(out)))
+        out = self.bn3(self.conv3(out))
+        out += self.shortcut(x)
+        out = F.relu(out)
+        return out
+
+
+class ResNet(nn.Module):
+    def __init__(self, block, num_blocks, in_dim: Size):
+        super(ResNet, self).__init__()
+        self.in_planes = 64
+
+        self.conv1 = nn.Conv2d(in_dim[0],
+                               64,
+                               kernel_size=3,
+                               stride=1,
+                               padding=1,
+                               bias=False)
+        self.bn1 = nn.BatchNorm2d(64)
+        self.layer1 = self._make_layer(block, 64, num_blocks[0], stride=1)
+        self.layer2 = self._make_layer(block, 128, num_blocks[1], stride=2)
+        self.layer3 = self._make_layer(block, 256, num_blocks[2], stride=2)
+        self.layer4 = self._make_layer(block, 512, num_blocks[3], stride=2)
+        self.linear = nn.Linear(512 * block.expansion, N_CLASS)
+
+    def _make_layer(self, block, planes, num_blocks, stride):
+        strides = [stride] + [1] * (num_blocks - 1)
+        layers = []
+        for stride in strides:
+            layers.append(block(self.in_planes, planes, stride))
+            self.in_planes = planes * block.expansion
+        return nn.Sequential(*layers)
+
+    def forward(self, x):
+        out = F.relu(self.bn1(self.conv1(x)))
+        out = self.layer1(out)
+        out = self.layer2(out)
+        out = self.layer3(out)
+        out = self.layer4(out)
+        out = F.avg_pool2d(out, 4)
+        out = out.view(out.size(0), -1)
+        out = self.linear(out)
+        return out
+
+
+def ResNet18(in_dim: Size):
+    return ResNet(BasicBlock, [2, 2, 2, 2], in_dim)
+
+
+def ResNet34(in_dim: Size):
+    return ResNet(BasicBlock, [3, 4, 6, 3], in_dim)
+
+
+def ResNet50(in_dim: Size):
+    return ResNet(Bottleneck, [3, 4, 6, 3], in_dim)
+
+
+def ResNet101(in_dim: Size):
+    return ResNet(Bottleneck, [3, 4, 23, 3], in_dim)
+
+
+def ResNet152(in_dim: Size):
+    return ResNet(Bottleneck, [3, 8, 36, 3], in_dim)
+
+
+def resnet(in_dim: Size, params: Params) -> nn.Module:
+    """Take input dimensions and params dictionary and output net"""
+    # TODO Johns code goes here
+    return ResNet18(in_dim)
 
 
 class Backward:
@@ -64,22 +220,29 @@ class Backward:
               y_val: np.ndarray,
               _: Optional[np.ndarray] = None) -> None:
         """Train and validate using given hyperparams."""
+        X, X_val = self._reshape(X), self._reshape(X_val)
         self._model = self._algorithm.train(params, X, y, X_val, y_val)
 
     def tune(self, X: np.ndarray, y: np.ndarray, X_val: np.ndarray,
              y_val: np.ndarray) -> Params:
         """Find optimal hyperparams for given train/val split."""
-        return self._algorithm.tune(X, y, X_val, y_val)
+        return self._algorithm.tune(self._reshape(X), y, self._reshape(X_val),
+                                    y_val)
 
     def __call__(self,
                  X: np.ndarray,
                  T: Optional[np.ndarray] = None,
                  denoise: bool = False) -> np.ndarray:
         """Predict, with flag to indicate whether to denoise."""
-        ret = self._model(X)
+        ret = self._model(self._reshape(X))
         if denoise:
             ret = softmax(np.linalg.pinv(T) @ ret.T, axis=0).T
         return ret
+
+    def _reshape(self, X: np.ndarray) -> np.ndarray:
+        if not isinstance(self._algorithm, NeuralNet):
+            X = X.reshape(len(X), -1)
+        return X
 
 
 class Lgbm:
@@ -95,6 +258,7 @@ class Lgbm:
                               valid_sets=dval,
                               verbose_eval=False).predict
 
+    @staticmethod
     def tune(X: np.ndarray, y: np.ndarray, X_val: np.ndarray,
              y_val: np.ndarray) -> Params:
         """Hyperparam tuning using optuna lightgbm integration."""
@@ -111,7 +275,7 @@ class Lgbm:
             'verbosity': -1,
             'force_row_wise': True,
             'early_stopping_round': 1,
-            'num_class': int(max(y) + 1)
+            'num_class': N_CLASS,
         }
         dtrain, dval = lgb.Dataset(X, y), lgb.Dataset(X_val, y_val)
         return params, dtrain, dval
@@ -155,6 +319,15 @@ class NeuralNet:
         """Initialize neural network configuration."""
         self._build, self._tune = build, tuner
 
+    @staticmethod
+    def _transform(X: np.ndarray) -> Tensor:
+        return stack(list(map(to_tensor, X)))
+
+    @staticmethod
+    def predict(model: nn.Module, X: np.ndarray) -> np.ndarray:
+        with no_grad():
+            return softmax(model(NeuralNet._transform(X)).numpy(), axis=1)
+
     def train(self,
               params: Params,
               X: np.ndarray,
@@ -165,12 +338,7 @@ class NeuralNet:
         """Train using the backwards method."""
         model = NeuralNet.build(self._build, params, X, y)
         NeuralNet.do_training(model, X, y, X_val, y_val, callbacks=callbacks)
-
-        def predict(X: np.ndarray) -> np.ndarray:
-            with no_grad():
-                return softmax(model(from_numpy(X)).numpy(), axis=1)
-
-        return predict
+        return functools.partial(NeuralNet.predict, model)
 
     def tune(self, X: np.ndarray, y: np.ndarray, X_val: np.ndarray,
              y_val: np.ndarray) -> Params:
@@ -183,6 +351,10 @@ class NeuralNet:
         study.optimize(f, n_trials=100, n_jobs=-1)
         return study.best_params
 
+    @staticmethod
+    def _in_dim(X: np.ndarray) -> Size:
+        return to_tensor(X[0]).shape
+
     def _objective(self, X: np.ndarray, y: np.ndarray, X_val: np.ndarray,
                    y_val: np.ndarray, trial: Trial) -> float:
         metrics_callback = MetricsCallback()
@@ -190,8 +362,7 @@ class NeuralNet:
             metrics_callback,
             PyTorchLightningPruningCallback(trial, monitor='val_acc')
         ]
-        in_dim, out_dim = NeuralNet._dimensions(X, y)
-        model = self.train(self._tune(in_dim, out_dim, trial),
+        model = self.train(self._tune(NeuralNet._in_dim(X), trial),
                            X,
                            y,
                            X_val,
@@ -203,12 +374,7 @@ class NeuralNet:
     def build(builder: Net, params: Params, X: np.ndarray,
               y: np.ndarray) -> nn.Module:
         """Construct neural network according to required dimensions."""
-        in_dim, out_dim = NeuralNet._dimensions(X, y)
-        return builder(in_dim, out_dim, params)
-
-    @staticmethod
-    def _dimensions(X: np.ndarray, y: np.ndarray) -> Tuple[int, int]:
-        return X.shape[1], int(max(y)) + 1
+        return builder(NeuralNet._in_dim(X), params)
 
     @staticmethod
     def do_training(model: nn.Module,
@@ -244,7 +410,8 @@ class NeuralNet:
 
     @staticmethod
     def _data_loader(X: np.ndarray, y: np.ndarray) -> DataLoader:
-        return DataLoader(TensorDataset(from_numpy(X), from_numpy(y)),
+        return DataLoader(TensorDataset(NeuralNet._transform(X),
+                                        from_numpy(y)),
                           batch_size=1024)
 
 
@@ -290,8 +457,7 @@ class Forward:
                  T: Optional[np.ndarray] = None,
                  denoise: bool = False) -> np.ndarray:
         """Predict, using transition matrix as necessary."""
-        with no_grad():
-            ret = softmax(self._model(from_numpy(X)).numpy(), axis=1)
+        ret = NeuralNet.predict(self._model, X)
         if T is not None and not denoise:
             ret = softmax(T @ ret.T, axis=0).T
         return ret
@@ -314,7 +480,8 @@ class NeuralNetWrapper(pl.LightningModule):
     def __init__(self, model: nn.Module, transform: Optional[Transform]):
         """Wrap pytorch model in lightning interface."""
         super().__init__()
-        self._model, self._transform = model, transform
+        self._model = torch.jit.script(model)
+        self._transform = transform
 
     def forward(self, x: Tensor) -> Tensor:
         """Apply transition matrix if necessary."""
@@ -336,24 +503,26 @@ class NeuralNetWrapper(pl.LightningModule):
         self.log('val_acc', top1_accuracy(self(batch[0]), batch[1]))
 
 
-def linear(in_dim: int, out_dim: int, _: Params) -> nn.Module:
+def linear(in_dim: Size, _: Params) -> nn.Module:
     """Multinomial logistic regression."""
-    return nn.Linear(in_dim, out_dim)
+    return nn.Sequential(nn.Flatten(), nn.Linear(np.prod(in_dim), N_CLASS))
 
 
 class ThreeLayer:
     """The simplest possible universal function approximator."""
     @staticmethod
-    def build(in_dim: int, out_dim: int, params: Params) -> nn.Module:
+    def build(in_dim: Size, params: Params) -> nn.Module:
         """Create the network, ready to be trained."""
         d = params['hidden_dim']
-        return nn.Sequential(nn.Linear(in_dim, d), nn.ReLU(), nn.Linear(d, d),
-                             nn.ReLU(), nn.Linear(d, out_dim))
+        return nn.Sequential(nn.Flatten(), nn.Linear(np.prod(in_dim), d),
+                             nn.ReLU(), nn.Linear(d, d), nn.ReLU(),
+                             nn.Linear(d, N_CLASS))
 
     @staticmethod
-    def tune(in_dim: int, out_dim: int, trial: Trial) -> Params:
+    def tune(in_dim: Size, trial: Trial) -> Params:
         """Tune the dimension of the hidden layer."""
-        low, high = min(in_dim, out_dim), max(in_dim, out_dim)
+        in_dim = np.prod(in_dim)
+        low, high = min(in_dim, N_CLASS), max(in_dim, N_CLASS)
         hidden_dim = trial.suggest_int('hidden_dim', low, high, log=True)
         return {'hidden_dim': hidden_dim}
 
@@ -426,15 +595,10 @@ def load(
 ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray,
            np.ndarray, np.ndarray]:
     """Data preprocessing."""
-    SCALE = 255
     with np.load(f'data/{dataset}.npz') as data:
-        Xtr = data['Xtr'].reshape((len(data['Xtr']), -1)).astype(np.float32)
-        Xtr /= SCALE
-        Xts = data['Xts'].reshape((len(data['Xts']), -1)).astype(np.float32)
-        Xts /= SCALE
-        Str = data['Str'].astype(np.int64)
+        Xtr, Xts = data['Xtr'], data['Xts']
+        Str, Yts = data['Str'].astype(np.int64), data['Yts'].astype(np.int64)
         Xtr, Xtr_val, Str, Str_val = train_test_split(Xtr, Str, test_size=0.2)
-        Yts = data['Yts'].astype(np.int64)
     T = np.array(DATA[dataset]).astype(np.float32)
     return Xtr, Str, Xtr_val, Str_val, T, Xts, Yts
 
@@ -464,34 +628,11 @@ def main() -> None:
     train()
 
 
-if 'TPU_NAME' in os.environ:
-    DEVICE = 'xla'
-elif torch.cuda.is_available():
-    DEVICE = 'cuda'
-else:
-    DEVICE = 'cpu'
-
-# This can be changed to 1 if it doesnt work on colab
-TPU_CORES = 8
-
-# Set this to True to do a "quick" training, for testing purposes
-FAST_DEV_RUN = False
-
-# Evaluation metrics.
-KEYS = ['acc_val', 'acc', 'acc_val_hat', 'acc_hat', 'T_hat_err', 'T_hat']
-
-# Datasets and corresponding transition matrices.
-DATA = OrderedDict([
-    ('FashionMNIST0.5', [[0.5, 0.2, 0.3], [0.3, 0.5, 0.2], [0.2, 0.3, 0.5]]),
-    ('FashionMNIST0.6', [[0.4, 0.3, 0.3], [0.3, 0.4, 0.3], [0.3, 0.3, 0.4]]),
-    ('CIFAR', [[1, 0, 0], [0, 1, 0], [0, 0, 1]]),
-])
-
 # This defines the classification algorithms to evaluate.
 # Put your classifier in this map to have it run in the
 # training/tuning.
 MODEL = OrderedDict([
-    ('resnet', Forward(ResNet)),
+    ('resnet', Forward(resnet)),
     #    ('linear', Forward(linear)),
     #    ('three_layer', Forward(ThreeLayer.build, ThreeLayer.tune)),
     ('lgb', Lgbm),
