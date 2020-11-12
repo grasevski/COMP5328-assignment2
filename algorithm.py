@@ -483,8 +483,7 @@ class NeuralNetWrapper(pl.LightningModule):
     def __init__(self, model: nn.Module, transform: Optional[Transform]):
         """Wrap pytorch model in lightning interface."""
         super().__init__()
-        self._model = torch.jit.script(model)
-        self._transform = transform
+        self._model, self._transform = model, transform
 
     def forward(self, x: Tensor) -> Tensor:
         """Apply transition matrix if necessary."""
@@ -602,8 +601,7 @@ def load(
         Xtr, Xts = data['Xtr'], data['Xts']
         Str, Yts = data['Str'].astype(np.int64), data['Yts'].astype(np.int64)
         Xtr, Xtr_val, Str, Str_val = train_test_split(Xtr, Str, test_size=0.2)
-    dtype = np.float32 if DEVICE == 'cpu' else np.float16
-    T = np.array(DATA[dataset], dtype=dtype)
+    T = np.array(DATA[dataset], np.float32)
     return Xtr, Str, Xtr_val, Str_val, T, Xts, Yts
 
 
