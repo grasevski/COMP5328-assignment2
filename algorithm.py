@@ -59,12 +59,8 @@ DATA = OrderedDict([
 # Number of classes in each dataset.
 N_CLASS = 3
 
-# Type declarations.
-Model = Callable[[np.ndarray], np.ndarray]
+# Type alias for hyperparams.
 Params = Dict[str, any]
-Net = Callable[[int, int, Params], nn.Module]
-Transform = Callable[[Tensor], Tensor]
-Tuner = Callable[[int, int, Trial], Params]
 
 
 class BasicBlock(nn.Module):
@@ -201,9 +197,16 @@ def ResNet152(in_dim: Size):
 
 
 def resnet(in_dim: Size, params: Params) -> nn.Module:
-    """Take input dimensions and params dictionary and output net"""
-    # TODO Johns code goes here
+    """Take input dimensions and params dictionary and output net."""
+    # TODO Johns code goes here.
     return ResNet18(in_dim)
+
+
+# Type declarations.
+Model = Callable[[np.ndarray], np.ndarray]
+Net = Callable[[int, int, Params], nn.Module]
+Transform = Callable[[Tensor], Tensor]
+Tuner = Callable[[int, int, Trial], Params]
 
 
 class Backward:
