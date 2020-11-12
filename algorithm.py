@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Build transition matrix estimator and classifiers."""
 import argparse
+import copy
 import csv
 import datetime
 import functools
@@ -8,53 +9,56 @@ import itertools
 import os
 import random
 import sys
-from typing import Callable, Dict, Tuple
+from typing import Callable, Dict, List, Optional, Tuple
 import jsonlines
 import lightgbm
 import optuna
+from optuna.trial import Trial
 import optuna.integration.lightgbm as lgb
+from optuna.integration import PyTorchLightningPruningCallback
 import numpy as np
 from scipy.special import softmax
-from sklearn.base import BaseEstimator
 from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import train_test_split
 import torch
-import torch.nn as nn
-
-if 'COLAB_TPU_ADDR' in os.environ:
-    import torch_xla
-    import torch_xla.core.xla_model as xm
-    device = xm.xla_device()
-elif torch.cuda.is_available():
-    device = 'cuda'
-else:
-    device = 'cpu'
+from torch import nn, Tensor, from_numpy, no_grad
+import torch.nn.functional as F
+from torch.optim import Optimizer, Adam
+from torch.utils.data import DataLoader, TensorDataset
+import pytorch_lightning as pl
+from pytorch_lightning.callbacks import EarlyStopping
 
 Model = Callable[[np.ndarray], np.ndarray]
-Trainer = Callable[
-    [Dict[str, any], np.ndarray, np.ndarray, np.ndarray, np.ndarray], Model]
-Tuner = Callable[[np.ndarray, np.ndarray, np.ndarray, np.ndarray], Dict[str,
-                                                                        any]]
-Net = Callable[[int, int, Dict[str, any]], nn.Module]
+Params = Dict[str, any]
+Net = Callable[[int, int, Params], nn.Module]
+Transform = Callable[[Tensor], Tensor]
+Tuner = Callable[[int, int, Trial], Params]
 
 
 class Backward:
     """Use inverse transition matrix to denoise."""
-    def __init__(self, trainer: Trainer, tuner: Tuner = None):
+    def __init__(self, algorithm):
         """Training and tuning interface."""
-        self._train, self._tune = trainer, tuner
+        self._algorithm = algorithm
 
-    def train(self, params: Dict[str, any], X: np.ndarray, y: np.ndarray, X_val: np.ndarray, y_val: np.ndarray, _: np.ndarray) -> None:
+    def train(self,
+              params: Params,
+              X: np.ndarray,
+              y: np.ndarray,
+              X_val: np.ndarray,
+              y_val: np.ndarray,
+              _: Optional[np.ndarray] = None) -> None:
         """Train and validate using given hyperparams."""
-        self._model = self._train(params, X, y, X_val, y_val)
+        self._model = self._algorithm.train(params, X, y, X_val, y_val)
 
-    def tune(self, X: np.ndarray, y: np.ndarray, X_val: np.ndarray, y_val: np.ndarray) -> Dict[str, any]:
+    def tune(self, X: np.ndarray, y: np.ndarray, X_val: np.ndarray,
+             y_val: np.ndarray) -> Params:
         """Find optimal hyperparams for given train/val split."""
-        return self._tune(X, y, X_val, y_val) if self._tune else {}
+        return self._algorithm.tune(X, y, X_val, y_val)
 
     def __call__(self,
                  X: np.ndarray,
-                 T: np.ndarray = None,
+                 T: Optional[np.ndarray] = None,
                  denoise: bool = False) -> np.ndarray:
         """Predict, with flag to indicate whether to denoise."""
         ret = self._model(X)
@@ -63,180 +67,285 @@ class Backward:
         return ret
 
 
-def lgbm_init(
-        X: np.ndarray, y: np.ndarray, X_val: np.ndarray,
-        y_val: np.ndarray) -> Tuple[Dict[str, any], lgb.Dataset, lgb.Dataset]:
-    """Configure lightgbm model."""
-    params = {
-        'objective': 'softmax',
-        'metric': 'softmax',
-        'verbosity': -1,
-        'force_row_wise': True,
-        'early_stopping_round': 1,
-        'num_class': int(max(y) + 1)
-    }
-    dtrain, dval = lgb.Dataset(X, y), lgb.Dataset(X_val, y_val)
-    return params, dtrain, dval
+class Lgbm:
+    """Interface for training and tuning lightgbm."""
+    @staticmethod
+    def train(params: Params, X: np.ndarray, y: np.ndarray, X_val: np.ndarray,
+              y_val: np.ndarray) -> Model:
+        """Training with early stopping on validation set."""
+        p, dtrain, dval = Lgbm._init(X, y, X_val, y_val)
+        params.update(p)
+        return lightgbm.train(params,
+                              dtrain,
+                              valid_sets=dval,
+                              verbose_eval=False).predict
+
+    def tune(X: np.ndarray, y: np.ndarray, X_val: np.ndarray,
+             y_val: np.ndarray) -> Params:
+        """Hyperparam tuning using optuna lightgbm integration."""
+        params, dtrain, dval = Lgbm._init(X, y, X_val, y_val)
+        return lgb.train(params, dtrain, valid_sets=dval,
+                         verbose_eval=False).params
+
+    @staticmethod
+    def _init(X: np.ndarray, y: np.ndarray, X_val: np.ndarray,
+              y_val: np.ndarray) -> Tuple[Params, lgb.Dataset, lgb.Dataset]:
+        params = {
+            'objective': 'softmax',
+            'metric': 'softmax',
+            'verbosity': -1,
+            'force_row_wise': True,
+            'early_stopping_round': 1,
+            'num_class': int(max(y) + 1)
+        }
+        dtrain, dval = lgb.Dataset(X, y), lgb.Dataset(X_val, y_val)
+        return params, dtrain, dval
 
 
-def lgbm(params: Dict[str, any], X: np.ndarray, y: np.ndarray,
-         X_val: np.ndarray, y_val: np.ndarray) -> Model:
-    """Training with early stopping on validation set."""
-    p, dtrain, dval = lgbm_init(X, y, X_val, y_val)
-    params.update(p)
-    return lightgbm.train(params, dtrain, valid_sets=dval,
-                          verbose_eval=False).predict
+class LR:
+    """Interface for training and tuning logistic regression."""
+    @staticmethod
+    def train(params: Params, X: np.ndarray, y: np.ndarray, X_val: np.ndarray,
+              y_val: np.ndarray) -> Model:
+        """Wrap sklearn training interface."""
+        return LogisticRegression(n_jobs=-1, **params).fit(X, y).predict_proba
+
+    @staticmethod
+    def tune(X: np.ndarray, y: np.ndarray, X_val: np.ndarray,
+             y_val: np.ndarray) -> Params:
+        """Hyperparam tuning using generic optuna integration."""
+        study = optuna.create_study(direction='maximize')
+        f = functools.partial(LR._objective, X, y, X_val, y_val)
+        study.optimize(f, n_trials=100, n_jobs=-1)
+        return study.best_params
+
+    @staticmethod
+    def _objective(X: np.ndarray, y: np.ndarray, X_val: np.ndarray,
+                   y_val: np.ndarray, trial: Trial) -> float:
+        C = trial.suggest_loguniform('C', 1e-9, 1e9)
+        solvers = ['newton-cg', 'lbfgs', 'liblinear', 'sag', 'saga']
+        solver = trial.suggest_categorical('solver', solvers)
+        multi_class = trial.suggest_categorical('multi_class', ['auto', 'ovr'])
+        model = LogisticRegression(C=C,
+                                   solver=solver,
+                                   multi_class=multi_class,
+                                   n_jobs=-1)
+        model.fit(X, y)
+        return top1_accuracy(model.predict_proba(X_val), y_val)
 
 
-def lgbm_tune(X: np.ndarray, y: np.ndarray, X_val: np.ndarray,
-              y_val: np.ndarray) -> Dict[str, any]:
-    """Hyperparam tuning using optuna lightgbm integration."""
-    params, dtrain, dval = lgbm_init(X, y, X_val, y_val)
-    return lgb.train(params, dtrain, valid_sets=dval,
-                     verbose_eval=False).params
+class NeuralNet:
+    """For use as a black box classifier."""
+    def __init__(self, build: Net, tuner: Optional[Tuner] = None):
+        """Initialize neural network configuration."""
+        self._build, self._tune = build, tuner
 
+    def train(self,
+              params: Params,
+              X: np.ndarray,
+              y: np.ndarray,
+              X_val: np.ndarray,
+              y_val: np.ndarray,
+              callbacks: List[pl.Callback] = []) -> Model:
+        """Train using the backwards method."""
+        model = NeuralNet.build(self._build, params, X, y)
+        NeuralNet.do_training(model, X, y, X_val, y_val, callbacks=callbacks)
 
-def logistic_regression_objective(X: np.ndarray, y: np.ndarray,
-                                  X_val: np.ndarray, y_val: np.ndarray,
-                                  trial) -> float:
-    """Logistic regression tuning code."""
-    C = trial.suggest_loguniform('C', 1e-9, 1e9)
-    solver = trial.suggest_categorical(
-        'solver', ['newton-cg', 'lbfgs', 'liblinear', 'sag', 'saga'])
-    multi_class = trial.suggest_categorical('multi_class', ['auto', 'ovr'])
-    model = LogisticRegression(C=C, solver=solver, multi_class=multi_class)
-    model.fit(X, y)
-    return top1_accuracy(model.predict_proba(X_val), y_val)
+        def predict(X: np.ndarray) -> np.ndarray:
+            with no_grad():
+                return softmax(model(from_numpy(X)).numpy(), axis=1)
 
+        return predict
 
-def logistic_regression(params: Dict[str, any], X: np.ndarray, y: np.ndarray,
-                        X_val: np.ndarray, y_val: np.ndarray) -> Model:
-    """Multiclass logistic regression classifier."""
-    return LogisticRegression(**params).fit(X, y).predict_proba
+    def tune(self, X: np.ndarray, y: np.ndarray, X_val: np.ndarray,
+             y_val: np.ndarray) -> Params:
+        """Optuna hyperparam tuning."""
+        if not self._tune:
+            return {}
+        pruner = optuna.pruners.MedianPruner()
+        study = optuna.create_study(direction='maximize', pruner=pruner)
+        f = functools.partial(self._objective, X, y, X_val, y_val)
+        study.optimize(f, n_trials=100, n_jobs=-1)
+        return study.best_params
 
+    def _objective(self, X: np.ndarray, y: np.ndarray, X_val: np.ndarray,
+                   y_val: np.ndarray, trial: Trial) -> float:
+        metrics_callback = MetricsCallback()
+        callbacks = [
+            metrics_callback,
+            PyTorchLightningPruningCallback(trial, monitor='val_acc')
+        ]
+        in_dim, out_dim = NeuralNet._dimensions(X, y)
+        model = self.train(self._tune(in_dim, out_dim, trial),
+                           X,
+                           y,
+                           X_val,
+                           y_val,
+                           callbacks=callbacks)
+        return metrics_callback.metrics[-1]['val_acc'].item()
 
-def logistic_regression_tune(X: np.ndarray, y: np.ndarray, X_val: np.ndarray,
-                             y_val: np.ndarray) -> Dict[str, any]:
-    """Hyperparam tuning using generic optuna integration."""
-    study = optuna.create_study(direction='maximize')
-    f = functools.partial(logistic_regression_objective, X, y, X_val, y_val)
-    study.optimize(f, n_trials=100, n_jobs=-1)
-    return study.best_params
+    @staticmethod
+    def build(builder: Net, params: Params, X: np.ndarray,
+              y: np.ndarray) -> nn.Module:
+        """Construct neural network according to required dimensions."""
+        in_dim, out_dim = NeuralNet._dimensions(X, y)
+        return builder(in_dim, out_dim, params)
+
+    @staticmethod
+    def _dimensions(X: np.ndarray, y: np.ndarray) -> Tuple[int, int]:
+        return X.shape[1], int(max(y)) + 1
+
+    @staticmethod
+    def do_training(model: nn.Module,
+                    X: np.ndarray,
+                    y: np.ndarray,
+                    X_val: np.ndarray,
+                    y_val: np.ndarray,
+                    transform: Optional[Transform] = None,
+                    callbacks: List[pl.Callback] = []) -> None:
+        """Main neural network training loop."""
+        params = {
+            'callbacks': callbacks + [EarlyStopping('val_acc')],
+            'checkpoint_callback': False,
+            'deterministic': True,
+            'fast_dev_run': True,
+            'logger': False,
+            'progress_bar_refresh_rate': 0,
+            'weights_summary': None,
+        }
+        if 'TPU_NAME' in os.environ:
+            params['accelerator'] = 'ddp'
+            params['precision'] = 16
+            params['tpu_cores'] = 8
+        elif torch.cuda.is_available():
+            params['accelerator'] = 'ddp'
+            params['auto_select_gpus'] = True
+            params['gpus'] = -1
+            params['precision'] = 16
+        trainer = pl.Trainer(**params)
+        train_dl = NeuralNet._data_loader(X, y)
+        val_dl = NeuralNet._data_loader(X_val, y_val)
+        trainer.fit(NeuralNetWrapper(model, transform), train_dl, val_dl)
+
+    @staticmethod
+    def _data_loader(X: np.ndarray, y: np.ndarray) -> DataLoader:
+        return DataLoader(TensorDataset(from_numpy(X), from_numpy(y)),
+                          batch_size=1024)
 
 
 class Forward:
     """Append transition matrix to neural network during training."""
-    def __init__(self, build: Net, tuner: Tuner = None):
+    def __init__(self, build: Net, tuner: Optional[Tuner] = None):
         """Wrap neural net architecture in generic interface."""
         self._build, self._tune = build, tuner
 
-    def train(self, params: Dict[str, any], X: np.ndarray, y: np.ndarray, X_val: np.ndarray, y_val: np.ndarray, T: np.ndarray = None) -> None:
-        """Train with hyperparams and early stopping on validation set."""
-        if T is None:
-            self._model = train_nn(self._build, params, X, y, lambda x: x, X_val, y_val)
-            return
-        T = torch.from_numpy(T).to(device)
-        sm = nn.Softmax(dim=1).to(device)
-        self._model = train_nn(self._build, params, X, y,
-                               lambda x, T=T: sm(T @ sm(x).T).T, X_val, y_val)
+    def backward(self) -> NeuralNet:
+        """Convert to backwards method."""
+        return NeuralNet(self._build, self._tune)
 
-    def tune(self, X: np.ndarray, y: np.ndarray, X_val: np.ndarray, y_val: np.ndarray) -> Dict[str, any]:
-        """Find optimal hyperparams for neural net."""
-        return self._tune(X, y, X_val, y_val) if self._tune else {}
+    def train(self,
+              params: Params,
+              X: np.ndarray,
+              y: np.ndarray,
+              X_val: np.ndarray,
+              y_val: np.ndarray,
+              T: Optional[np.ndarray] = None,
+              reuse: bool = False) -> None:
+        """Train with or without noise, depending on params."""
+        if not reuse:
+            self._model = NeuralNet.build(self._build, params, X, y)
+        if T is None:
+            NeuralNet.do_training(self._model, X, y, X_val, y_val)
+            return
+        T = from_numpy(T)
+        sm = nn.Softmax(dim=1)
+
+        def transform(x: Tensor, T: Tensor = T) -> Tensor:
+            return sm(T @ sm(x).T).T
+
+        NeuralNet.do_training(self._model, X, y, X_val, y_val, transform)
+
+    def tune(self, X: np.ndarray, y: np.ndarray, X_val: np.ndarray,
+             y_val: np.ndarray) -> Params:
+        """Tune according to noisy classification accuracy."""
+        return self.backward().tune(X, y, X_val, y_val)
 
     def __call__(self,
                  X: np.ndarray,
-                 T: np.ndarray = None,
+                 T: Optional[np.ndarray] = None,
                  denoise: bool = False) -> np.ndarray:
         """Predict, using transition matrix as necessary."""
-        with torch.no_grad():
-            ret = softmax(self._model(torch.from_numpy(X).to(device)).cpu().numpy(), axis=1)
+        with no_grad():
+            ret = softmax(self._model(from_numpy(X)).numpy(), axis=1)
         if T is not None and not denoise:
             ret = softmax(T @ ret.T, axis=0).T
         return ret
 
 
-def train_nn(build: Net, params: Dict[str, any], X: np.ndarray, y: np.ndarray,
-             transform: Callable[[torch.Tensor], torch.Tensor],
-             X_val: np.ndarray, y_val: np.ndarray) -> nn.Module:
-    """SGD with early stopping on validation set."""
-    model = build(X.shape[1], max(y) + 1, params).to(device)
-    X = torch.from_numpy(X).to(device)
-    y = torch.from_numpy(y).to(device)
-    X_val = torch.from_numpy(X_val).to(device)
-    y_val = torch.from_numpy(y_val).to(device)
-    optimizer = torch.optim.SGD(model.parameters(),
-                                lr=1e-1,
-                                weight_decay=1e-5,
-                                momentum=0.9)
-    train_loader = torch.utils.data.DataLoader(torch.utils.data.TensorDataset(
-        X, y),
-                                               batch_size=1024,
-                                               shuffle=True)
-    criterion = nn.CrossEntropyLoss()
-    best = 0
-    for epoch in range(10):
-        model.train()
-        for X, y in train_loader:
-            optimizer.zero_grad()
-            pred = transform(model(X))
-            criterion(pred, y).backward()
-            optimizer.step()
-        model.eval()
-        with torch.no_grad():
-            pred = transform(model(X_val))
-        acc = top1_accuracy(pred, y_val)
-        if acc < best:
-            break
-        best = acc
-    return model
+class MetricsCallback(pl.Callback):
+    """PyTorch Lightning metric callback."""
+    def __init__(self):
+        """Record metrics in array."""
+        super().__init__()
+        self.metrics = []
+
+    def on_validation_end(self, trainer, pl_module):
+        """Append metrics."""
+        self.metrics.append(trainer.callback_metrics)
 
 
-class NeuralNet:
-    """For use as black box classifier."""
-    def __init__(self, model: nn.Module):
-        """Wrap pytorch model."""
-        self._model = model
+class NeuralNetWrapper(pl.LightningModule):
+    """Use pytorch lightning interface for multicore training."""
+    def __init__(self, model: nn.Module, transform: Optional[Transform]):
+        super().__init__()
+        """Wrap pytorch model in lightning interface."""
+        self._model, self._transform = model, transform
 
-    def __call__(self, X: np.ndarray) -> np.ndarray:
-        """Numpy prediction interface."""
-        with torch.no_grad():
-            return softmax(self._model(torch.from_numpy(X).to(device)).cpu().numpy(), axis=1)
+    def forward(self, x: Tensor) -> Tensor:
+        """Apply transition matrix if necessary."""
+        ret = self._model(x)
+        if self._transform:
+            ret = self._transform(ret)
+        return ret
+
+    def configure_optimizers(self) -> Optimizer:
+        """Just use plain Adam for now."""
+        return Adam(self.parameters())
+
+    def training_step(self, batch: Tuple[Tensor, Tensor], _) -> Tensor:
+        """Minimize cross entropy."""
+        return F.cross_entropy(self(batch[0]), batch[1])
+
+    def validation_step(self, batch, batch_nb):
+        """Early stopping based on validation accuracy."""
+        self.log('val_acc', top1_accuracy(self(batch[0]), batch[1]))
 
 
-def neural_net(build: Net) -> Callable[[Dict[str, any], np.ndarray, np.ndarray, np.ndarray, np.ndarray], NeuralNet]:
-    """Wrap pytorch network in generic train function."""
-    return lambda params, X, y, X_val, y_val: NeuralNet(train_nn(build, params, X, y, lambda x: x, X_val, y_val))
-
-
-def linear(in_dim: int, out_dim: int, _: Dict[str, any]) -> nn.Module:
+def linear(in_dim: int, out_dim: int, _: Params) -> nn.Module:
     """Multinomial logistic regression."""
     return nn.Linear(in_dim, out_dim)
 
 
-def three_layer(in_dim: int, out_dim: int, _: Dict[str, any]) -> nn.Module:
+class ThreeLayer:
     """The simplest possible universal function approximator."""
-    return nn.Sequential(nn.Linear(in_dim, out_dim), nn.ReLU(),
-                         nn.Linear(out_dim, out_dim), nn.ReLU(),
-                         nn.Linear(out_dim, out_dim))
+    @staticmethod
+    def build(in_dim: int, out_dim: int, params: Params) -> nn.Module:
+        """Create the network, ready to be trained."""
+        d = params['hidden_dim']
+        return nn.Sequential(nn.Linear(in_dim, d), nn.ReLU(), nn.Linear(d, d),
+                             nn.ReLU(), nn.Linear(d, out_dim))
+
+    @staticmethod
+    def tune(in_dim: int, out_dim: int, trial: Trial) -> Params:
+        """Tune the dimension of the hidden layer."""
+        low, high = min(in_dim, out_dim), max(in_dim, out_dim)
+        hidden_dim = trial.suggest_int('hidden_dim', low, high, log=True)
+        return {'hidden_dim': hidden_dim}
 
 
-def top1_accuracy(pred: np.ndarray, y: np.ndarray) -> float:
+def top1_accuracy(pred, y):
     """Main evaluation metric."""
     return sum(pred.argmax(axis=1) == y) / len(y)
-
-
-def reset_seed(seed: int = 0):
-    """Fix all random seeds for repeating the experiment result."""
-    random.seed(seed)
-    os.environ['PYTHONHASHSEED'] = str(seed)
-    np.random.seed(seed)
-    torch.manual_seed(seed)
-    torch.cuda.manual_seed(seed)
-    # If multi-GPUs are used.
-    torch.cuda.manual_seed_all(seed)
-    torch.backends.cudnn.benchmark = False
-    torch.backends.cudnn.deterministic = True
 
 
 def estimate_transition_matrix(model, X: np.ndarray) -> np.ndarray:
@@ -245,10 +354,13 @@ def estimate_transition_matrix(model, X: np.ndarray) -> np.ndarray:
     return np.hstack([p[i][np.newaxis].T for i in p.argmax(axis=0)])
 
 
-def evaluate(params: Dict[str, any]) -> Tuple[float, float]:
+def evaluate(model, params: Dict[str, any]) -> Tuple[float, float]:
     """Run one evaluation round."""
+    if isinstance(model, Forward):
+        model = copy.copy(model)
+    else:
+        model = Backward(model)
     Xtr, Str, Xtr_val, Str_val, T, Xts, Yts = load(params['dataset'])
-    model = MODEL[params['model']]
     model.train(params['params'], Xtr, Str, Xtr_val, Str_val, T)
     ret = {}
     ret['acc_val'] = top1_accuracy(model(Xtr_val, T), Str_val)
@@ -257,30 +369,41 @@ def evaluate(params: Dict[str, any]) -> Tuple[float, float]:
         model.train(params['params'], Xtr, Str, Xtr_val, Str_val)
     ret['T_hat'] = estimate_transition_matrix(model, Xtr)
     if isinstance(model, Forward):
-        model.train(params['params'], Xtr, Str, Xtr_val, Str_val, ret['T_hat'])
+        model.train(params['params'], Xtr, Str, Xtr_val, Str_val, ret['T_hat'],
+                    True)
     ret['T_hat_err'] = np.linalg.norm(T - ret['T_hat'])
     ret['acc_val_hat'] = top1_accuracy(model(Xtr_val, ret['T_hat']), Str_val)
     ret['acc_hat'] = top1_accuracy(model(Xts, ret['T_hat'], True), Yts)
     return ret
 
 
+def evaluate_batch(model, params: Dict[str, any]) -> Dict[str, any]:
+    """Run ten evaluation rounds and get the mean and stdev."""
+    results = [evaluate(model, params) for _ in range(10)]
+    u = {k: np.mean([r[k] for r in results], axis=0) for k in KEYS}
+    x = {f'{k}_std': np.std([r[k] for r in results], axis=0) for k in KEYS}
+    return {'dataset': params['dataset'], **u, **x}
+
+
 def train() -> None:
     """Run training and output evaluation results in csv format."""
-    keys = ['acc_val', 'acc', 'acc_val_hat', 'acc_hat', 'T_hat_err', 'T_hat']
-    headers = ['ts', 'dataset', 'model'] + keys + [f'{k}_std' for k in keys]
+    headers = ['ts', 'dataset', 'model'] + KEYS + [f'{k}_std' for k in KEYS]
     w = csv.DictWriter(sys.stdout, headers)
     w.writeheader()
     for params in PARAMS:
-        reset_seed()
-        results = [evaluate(params) for _ in range(10)]
-        u = {k: np.mean([r[k] for r in results], axis=0) for k in keys}
-        x = {f'{k}_std': np.std([r[k] for r in results], axis=0) for k in keys}
+        pl.seed_everything(0)
+        model = MODEL[params['model']]
         w.writerow({
             'ts': str(datetime.datetime.now()),
-            'dataset': params['dataset'],
             'model': params['model'],
-            **u, **x
+            **evaluate_batch(model, params)
         })
+        if isinstance(model, Forward):
+            w.writerow({
+                'ts': str(datetime.datetime.now()),
+                'model': f'{params["model"]}_backward',
+                **evaluate_batch(model.backward(), params)
+            })
 
 
 def load(
@@ -290,16 +413,14 @@ def load(
     """Data preprocessing."""
     SCALE = 255
     with np.load(f'data/{dataset}.npz') as data:
-        Xtr = data['Xtr'].reshape(
-            (len(data['Xtr']), -1)).astype(np.float32) / SCALE
-        Xts = data['Xts'].reshape(
-            (len(data['Xts']), -1)).astype(np.float32) / SCALE
-        Xtr, Xtr_val, Str, Str_val = train_test_split(Xtr,
-                                                      data['Str'].astype(
-                                                          np.int64),
-                                                      test_size=0.2)
+        Xtr = data['Xtr'].reshape((len(data['Xtr']), -1)).astype(np.float32)
+        Xtr /= SCALE
+        Xts = data['Xts'].reshape((len(data['Xts']), -1)).astype(np.float32)
+        Xts /= SCALE
+        Str = data['Str'].astype(np.int64)
+        Xtr, Xtr_val, Str, Str_val = train_test_split(Xtr, Str, test_size=0.2)
         Yts = data['Yts'].astype(np.int64)
-    T = np.array(DATA[dataset], dtype=np.float32)
+    T = np.array(DATA[dataset]).astype(np.float32)
     return Xtr, Str, Xtr_val, Str_val, T, Xts, Yts
 
 
@@ -308,7 +429,7 @@ def tune() -> None:
     optuna.logging.set_verbosity(optuna.logging.WARNING)
     w = jsonlines.Writer(sys.stdout, flush=True)
     for dataset, (name, model) in itertools.product(DATA, MODEL.items()):
-        reset_seed()
+        pl.seed_everything(0)
         Xtr, Str, Xtr_val, Str_val, _, _, _ = load(dataset)
         w.write({
             'ts': str(datetime.datetime.now()),
@@ -328,43 +449,32 @@ def main() -> None:
     train()
 
 
+KEYS = ['acc_val', 'acc', 'acc_val_hat', 'acc_hat', 'T_hat_err', 'T_hat']
 DATA = {
     'FashionMNIST0.5': [[0.5, 0.2, 0.3], [0.3, 0.5, 0.2], [0.2, 0.3, 0.5]],
     'FashionMNIST0.6': [[0.4, 0.3, 0.3], [0.3, 0.4, 0.3], [0.3, 0.3, 0.4]],
     'CIFAR': [[1, 0, 0], [0, 1, 0], [0, 0, 1]],
 }
 MODEL = {
-    'forward_linear': Forward(linear),
-    'backward_linear': Backward(neural_net(linear)),
-    'forward_three_layer': Forward(three_layer),
-    'backward_three_layer': Backward(neural_net(three_layer)),
-    'lgb': Backward(lgbm, lgbm_tune),
-    'logistic': Backward(logistic_regression, logistic_regression_tune),
+    'linear': Forward(linear),
+    'three_layer': Forward(ThreeLayer.build, ThreeLayer.tune),
+    'lgb': Lgbm,
+    'logistic': LR,
 }
 PARAMS = [
     {
         "ts": "2020-11-09 21:27:04.115906",
         "dataset": "FashionMNIST0.5",
-        "model": "forward_linear",
+        "model": "linear",
         "params": {}
     },
     {
         "ts": "2020-11-09 21:27:04.184178",
         "dataset": "FashionMNIST0.5",
-        "model": "backward_linear",
-        "params": {}
-    },
-    {
-        "ts": "2020-11-09 21:27:04.235472",
-        "dataset": "FashionMNIST0.5",
-        "model": "forward_three_layer",
-        "params": {}
-    },
-    {
-        "ts": "2020-11-09 21:27:04.288037",
-        "dataset": "FashionMNIST0.5",
-        "model": "backward_three_layer",
-        "params": {}
+        "model": "three_layer",
+        "params": {
+            "hidden_dim": 3
+        }
     },
     {
         "ts": "2020-11-09 21:27:04.339063",
@@ -401,26 +511,16 @@ PARAMS = [
     {
         "ts": "2020-11-09 22:22:57.713244",
         "dataset": "FashionMNIST0.6",
-        "model": "forward_linear",
+        "model": "linear",
         "params": {}
     },
     {
         "ts": "2020-11-09 22:22:57.784873",
         "dataset": "FashionMNIST0.6",
-        "model": "backward_linear",
-        "params": {}
-    },
-    {
-        "ts": "2020-11-09 22:22:57.843417",
-        "dataset": "FashionMNIST0.6",
-        "model": "forward_three_layer",
-        "params": {}
-    },
-    {
-        "ts": "2020-11-09 22:22:57.899029",
-        "dataset": "FashionMNIST0.6",
-        "model": "backward_three_layer",
-        "params": {}
+        "model": "three_layer",
+        "params": {
+            "hidden_dim": 3
+        }
     },
     {
         "ts": "2020-11-09 22:22:57.958981",
@@ -452,6 +552,50 @@ PARAMS = [
             "C": 0.0005710289362229364,
             "solver": "saga",
             "multi_class": "auto"
+        }
+    },
+    {
+        'dataset': 'CIFAR',
+        'model': 'linear',
+        'params': {}
+    },
+    {
+        'dataset': 'CIFAR',
+        'model': 'three_layer',
+        "params": {
+            "hidden_dim": 3
+        }
+    },
+    {
+        "ts": "2020-11-11 12:33:43.689590",
+        "dataset": "CIFAR",
+        "model": "lgb",
+        "params": {
+            "objective": "softmax",
+            "metric": "multi_logloss",
+            "verbosity": -1,
+            "force_row_wise": True,
+            "num_class": 3,
+            "feature_pre_filter": False,
+            "lambda_l1": 3.7327508171383625e-05,
+            "lambda_l2": 0.005723295583781243,
+            "num_leaves": 8,
+            "feature_fraction": 1.0,
+            "bagging_fraction": 0.9714542036015783,
+            "bagging_freq": 3,
+            "min_child_samples": 20,
+            "num_iterations": 1000,
+            "early_stopping_round": 1
+        }
+    },
+    {
+        "ts": "2020-11-11 12:49:39.544802",
+        "dataset": "CIFAR",
+        "model": "logistic",
+        "params": {
+            "C": 3987250.7131022774,
+            "solver": "saga",
+            "multi_class": "ovr"
         }
     },
 ]
