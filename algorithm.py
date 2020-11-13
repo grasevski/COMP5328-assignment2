@@ -43,6 +43,9 @@ TPU_CORES = 8
 # FIXME Set this to 'dp' or None if you are getting errors.
 ACCELERATOR = 'ddp'
 
+# FIXME OOM on colab with this batch size
+BATCH_SIZE = 1024
+
 # Set this to True to do a "quick" training, for testing purposes.
 FAST_DEV_RUN = False
 
@@ -415,7 +418,7 @@ class NeuralNet:
     def _data_loader(X: np.ndarray, y: np.ndarray) -> DataLoader:
         return DataLoader(TensorDataset(NeuralNet._transform(X),
                                         from_numpy(y)),
-                          batch_size=1024)
+                          batch_size=BATCH_SIZE)
 
 
 class Forward:
