@@ -34,7 +34,7 @@ from pytorch_lightning.callbacks import EarlyStopping
 FAST_DEV_RUN = False
 
 # Number of trials to run the experiment.
-N_TRIAL = 10
+N_TRIAL = 1
 
 # FIXME This can be changed to 1 if it doesnt work on colab.
 TPU_CORES = 8
@@ -503,6 +503,7 @@ class NeuralNet:
                        batch_size=BATCH_SIZE,
                        num_workers=NUM_WORKERS,
                        pin_memory=True)
+        model.eval()
         with no_grad():
             preds = [softmax(model(x).numpy(), axis=1) for (x, ) in X]
         return np.concatenate(preds)
