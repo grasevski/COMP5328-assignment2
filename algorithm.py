@@ -814,10 +814,10 @@ def main() -> None:
 MODEL = OrderedDict([
     ('efficientnet', Forward(EfficientNetB0)),
     ('resnet', Forward(resnet)),
-    #    ('linear', Forward(linear)),
-    #    ('three_layer', Forward(ThreeLayer.build, ThreeLayer.tune)),
+    #('linear', Forward(linear)),
+    #('three_layer', Forward(ThreeLayer.build, ThreeLayer.tune)),
     ('lgb', Lgbm),
-    #    ('logistic', LR),
+    #('logistic', LR),
 ])
 
 # This defines which (dataset, model, params) combinations to train
@@ -853,20 +853,20 @@ PARAMS = [
         'model': 'resnet',
         'params': {}
     },
-    #    {
-    #        "ts": "2020-11-09 21:27:04.115906",
-    #        "dataset": "FashionMNIST0.5",
-    #        "model": "linear",
-    #        "params": {}
-    #    },
-    #    {
-    #        "ts": "2020-11-09 21:27:04.184178",
-    #        "dataset": "FashionMNIST0.5",
-    #        "model": "three_layer",
-    #        "params": {
-    #            "hidden_dim": 3
-    #        }
-    #    },
+    #{
+    #    "ts": "2020-11-09 21:27:04.115906",
+    #    "dataset": "FashionMNIST0.5",
+    #    "model": "linear",
+    #    "params": {}
+    #},
+    #{
+    #    "ts": "2020-11-09 21:27:04.184178",
+    #    "dataset": "FashionMNIST0.5",
+    #    "model": "three_layer",
+    #    "params": {
+    #        "hidden_dim": 3
+    #    }
+    #},
     {
         "ts": "2020-11-09 21:27:04.339063",
         "dataset": "FashionMNIST0.5",
@@ -889,30 +889,30 @@ PARAMS = [
             "early_stopping_round": 1
         }
     },
-    #    {
-    #        "ts": "2020-11-09 21:30:08.050028",
-    #        "dataset": "FashionMNIST0.5",
-    #        "model": "logistic",
-    #        "params": {
-    #            "C": 0.000757356598665866,
-    #            "solver": "liblinear",
-    #            "multi_class": "ovr"
-    #        }
-    #    },
-    #    {
-    #        "ts": "2020-11-09 22:22:57.713244",
-    #        "dataset": "FashionMNIST0.6",
-    #        "model": "linear",
-    #        "params": {}
-    #    },
-    #    {
-    #        "ts": "2020-11-09 22:22:57.784873",
-    #        "dataset": "FashionMNIST0.6",
-    #        "model": "three_layer",
-    #        "params": {
-    #            "hidden_dim": 3
-    #        }
-    #    },
+    #{
+    #    "ts": "2020-11-09 21:30:08.050028",
+    #    "dataset": "FashionMNIST0.5",
+    #    "model": "logistic",
+    #    "params": {
+    #        "C": 0.000757356598665866,
+    #        "solver": "liblinear",
+    #        "multi_class": "ovr"
+    #    }
+    #},
+    #{
+    #    "ts": "2020-11-09 22:22:57.713244",
+    #    "dataset": "FashionMNIST0.6",
+    #    "model": "linear",
+    #    "params": {}
+    #},
+    #{
+    #    "ts": "2020-11-09 22:22:57.784873",
+    #    "dataset": "FashionMNIST0.6",
+    #    "model": "three_layer",
+    #    "params": {
+    #        "hidden_dim": 3
+    #    }
+    #},
     {
         "ts": "2020-11-09 22:22:57.958981",
         "dataset": "FashionMNIST0.6",
@@ -935,28 +935,28 @@ PARAMS = [
             "early_stopping_round": 1
         }
     },
-    #    {
-    #        "ts": "2020-11-09 22:24:15.015987",
-    #        "dataset": "FashionMNIST0.6",
-    #        "model": "logistic",
-    #        "params": {
-    #            "C": 0.0005710289362229364,
-    #            "solver": "saga",
-    #            "multi_class": "auto"
-    #        }
-    #    },
-    #    {
-    #        'dataset': 'CIFAR',
-    #        'model': 'linear',
-    #        'params': {}
-    #    },
-    #    {
-    #        'dataset': 'CIFAR',
-    #        'model': 'three_layer',
-    #        "params": {
-    #            "hidden_dim": 3
-    #        }
-    #    },
+    #{
+    #    "ts": "2020-11-09 22:24:15.015987",
+    #    "dataset": "FashionMNIST0.6",
+    #    "model": "logistic",
+    #    "params": {
+    #        "C": 0.0005710289362229364,
+    #        "solver": "saga",
+    #        "multi_class": "auto"
+    #    }
+    #},
+    #{
+    #    'dataset': 'CIFAR',
+    #    'model': 'linear',
+    #    'params': {}
+    #},
+    #{
+    #    'dataset': 'CIFAR',
+    #    'model': 'three_layer',
+    #    "params": {
+    #        "hidden_dim": 3
+    #    }
+    #},
     {
         "ts": "2020-11-11 12:33:43.689590",
         "dataset": "CIFAR",
@@ -979,16 +979,16 @@ PARAMS = [
             "early_stopping_round": 1
         }
     },
-    #    {
-    #        "ts": "2020-11-11 12:49:39.544802",
-    #        "dataset": "CIFAR",
-    #        "model": "logistic",
-    #        "params": {
-    #            "C": 3987250.7131022774,
-    #            "solver": "saga",
-    #            "multi_class": "ovr"
-    #        }
-    #    },
+    #{
+    #    "ts": "2020-11-11 12:49:39.544802",
+    #    "dataset": "CIFAR",
+    #    "model": "logistic",
+    #    "params": {
+    #        "C": 3987250.7131022774,
+    #        "solver": "saga",
+    #        "multi_class": "ovr"
+    #    }
+    #},
 ]
 
 if __name__ == '__main__':
