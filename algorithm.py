@@ -43,9 +43,6 @@ TPU_CORES = 8
 # FIXME Set this to 'dp' or None if you are getting errors.
 ACCELERATOR = 'ddp'
 
-# Neural net training batch size.
-BATCH_SIZE = 1024
-
 # Set this to True to do a "quick" training, for testing purposes.
 FAST_DEV_RUN = False
 
@@ -58,6 +55,9 @@ DATA = OrderedDict([
     ('FashionMNIST0.6', [[0.4, 0.3, 0.3], [0.3, 0.4, 0.3], [0.3, 0.3, 0.4]]),
     ('CIFAR', [[1, 0, 0], [0, 1, 0], [0, 0, 1]]),
 ])
+
+# Neural net training batch size.
+BATCH_SIZE = 1024
 
 # Number of classes in each dataset.
 N_CLASS = 3
