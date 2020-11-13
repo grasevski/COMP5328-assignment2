@@ -30,15 +30,11 @@ from torchvision.transforms.functional import to_tensor
 import pytorch_lightning as pl
 from pytorch_lightning.callbacks import EarlyStopping
 
-if 'TPU_NAME' in os.environ:
-    DEVICE = 'xla'
-elif torch.cuda.is_available():
-    DEVICE = 'cuda'
-else:
-    DEVICE = 'cpu'
-
 # Set this to True to do a "quick" training, for testing purposes.
-FAST_DEV_RUN = False
+FAST_DEV_RUN = True
+
+# Number of trials to run the experiment.
+N_TRIAL = 1
 
 # FIXME This can be changed to 1 if it doesnt work on colab.
 TPU_CORES = 8
@@ -61,6 +57,13 @@ DATA = OrderedDict([
     ('FashionMNIST0.6', [[0.4, 0.3, 0.3], [0.3, 0.4, 0.3], [0.3, 0.3, 0.4]]),
     ('CIFAR', [[1, 0, 0], [0, 1, 0], [0, 0, 1]]),
 ])
+
+if 'TPU_NAME' in os.environ:
+    DEVICE = 'xla'
+elif torch.cuda.is_available():
+    DEVICE = 'cuda'
+else:
+    DEVICE = 'cpu'
 
 # Number of classes in each dataset.
 N_CLASS = 3
@@ -740,7 +743,7 @@ def evaluate(model, params: Dict[str, any]) -> Tuple[float, float]:
 
 def evaluate_batch(model, params: Dict[str, any]) -> Dict[str, any]:
     """Run ten evaluation rounds and get the mean and stdev."""
-    results = [evaluate(model, params) for _ in range(10)]
+    results = [evaluate(model, params) for _ in range(N_TRIAL)]
     u = {k: np.mean([r[k] for r in results], axis=0) for k in KEYS}
     x = {f'{k}_std': np.std([r[k] for r in results], axis=0) for k in KEYS}
     return {'dataset': params['dataset'], **u, **x}
