@@ -43,7 +43,7 @@ TPU_CORES = 8
 # FIXME Set this to 'dp' or None if you are getting errors.
 ACCELERATOR = 'ddp'
 
-# FIXME OOM on colab with this batch size.
+# Neural net training batch size.
 BATCH_SIZE = 1024
 
 # Set this to True to do a "quick" training, for testing purposes.
@@ -331,8 +331,11 @@ class NeuralNet:
 
     @staticmethod
     def predict(model: nn.Module, X: np.ndarray) -> np.ndarray:
+        X = DataLoader(TensorDataset(NeuralNet._transform(X)),
+                       batch_size=BATCH_SIZE)
         with no_grad():
-            return softmax(model(NeuralNet._transform(X)).numpy(), axis=1)
+            preds = [softmax(model(x).numpy(), axis=1) for x in X]
+        return np.concatenate(preds)
 
     def train(self,
               params: Params,
