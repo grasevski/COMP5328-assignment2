@@ -43,7 +43,7 @@ TPU_CORES = 8
 # FIXME Set this to 'dp' or None if you are getting errors.
 ACCELERATOR = 'ddp'
 
-# FIXME OOM on colab with this batch size
+# FIXME OOM on colab with this batch size.
 BATCH_SIZE = 1024
 
 # Set this to True to do a "quick" training, for testing purposes.
