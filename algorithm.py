@@ -31,10 +31,10 @@ import pytorch_lightning as pl
 from pytorch_lightning.callbacks import EarlyStopping
 
 # Set this to True to do a "quick" training, for testing purposes.
-FAST_DEV_RUN = True
+FAST_DEV_RUN = False
 
 # Number of trials to run the experiment.
-N_TRIAL = 1
+N_TRIAL = 10
 
 # FIXME This can be changed to 1 if it doesnt work on colab.
 TPU_CORES = 8
