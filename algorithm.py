@@ -334,7 +334,7 @@ class NeuralNet:
         X = DataLoader(TensorDataset(NeuralNet._transform(X)),
                        batch_size=BATCH_SIZE)
         with no_grad():
-            preds = [softmax(model(x).numpy(), axis=1) for x in X]
+            preds = [softmax(model(x).numpy(), axis=1) for (x, ) in X]
         return np.concatenate(preds)
 
     def train(self,
