@@ -30,23 +30,33 @@ from torchvision.transforms.functional import to_tensor
 import pytorch_lightning as pl
 from pytorch_lightning.callbacks import EarlyStopping
 
-# Set this to True to do a "quick" training, for testing purposes.
-FAST_DEV_RUN = False
-
 # Number of trials to run the experiment.
 N_TRIAL = 1
-
-# FIXME This can be changed to 1 if it doesnt work on colab.
-TPU_CORES = 8
-
-# FIXME Set this to 'dp' or None if you are getting errors.
-ACCELERATOR = 'ddp'
 
 # Neural net training batch size.
 BATCH_SIZE = 1024
 
+# Floating-point precision for non-CPU training.
+PRECISION = 16
+
 # Worker processes for data loading.
 NUM_WORKERS = os.cpu_count()
+
+# https://pytorch-lightning.readthedocs.io/en/latest/trainer.html#trainer-class-api
+TRAINING_PARAMS = {
+    'checkpoint_callback': False,
+    'deterministic': True,
+    'fast_dev_run': False,
+    'logger': False,
+    'progress_bar_refresh_rate': 0,
+    'weights_summary': None,
+}
+
+# Extra pytorch lightning config for gpu training.
+GPU_PARAMS = {'auto_select_gpus': True, 'gpus': -1, 'precision': PRECISION}
+
+# Extra pytorch lightning config for tpu training.
+TPU_PARAMS = {'accelerator': 'ddp', 'precision': PRECISION, 'tpu_cores': 8}
 
 # Evaluation metrics.
 KEYS = ['acc_val', 'acc', 'acc_val_hat', 'acc_hat', 'T_hat_err', 'T_hat']
@@ -565,24 +575,13 @@ class NeuralNet:
                     transform: Optional[Transform] = None,
                     callbacks: List[pl.Callback] = []) -> None:
         """Main neural network training loop."""
-        params = {
-            'callbacks': callbacks + [EarlyStopping('val_acc')],
-            'checkpoint_callback': False,
-            'deterministic': True,
-            'fast_dev_run': FAST_DEV_RUN,
-            'logger': False,
-            'progress_bar_refresh_rate': 0,
-            'weights_summary': None,
-        }
+        params = TRAINING_PARAMS.copy()
+        params['callbacks'] = [EarlyStopping('val_acc', mode='max')]
+        params['callbacks'] += callbacks
         if DEVICE == 'cuda':
-            params['accelerator'] = 'ddp'
-            params['auto_select_gpus'] = True
-            params['gpus'] = -1
-            params['precision'] = 16
+            params = {**params, **GPU_PARAMS}
         elif DEVICE != 'cpu':
-            params['accelerator'] = 'ddp'
-            params['precision'] = 16
-            params['tpu_cores'] = TPU_CORES
+            params = {**params, **TPU_PARAMS}
         trainer = pl.Trainer(**params)
         train_dl = NeuralNet._data_loader(X, y)
         val_dl = NeuralNet._data_loader(X_val, y_val)
