@@ -49,7 +49,7 @@ TEST_SIZE = 0.2
 TRAINING_PARAMS = {
     'checkpoint_callback': False,
     'deterministic': True,
-    'fast_dev_run': False,
+    'fast_dev_run': True,
     'logger': False,
     'progress_bar_refresh_rate': 0,
     'weights_summary': None,
@@ -637,7 +637,7 @@ class Forward:
 
     def dT(self) -> np.ndarray:
         """Slack variable."""
-        return self._dT.numpy()
+        return self._dT.cpu().numpy()
 
     def tune(self, X: np.ndarray, y: np.ndarray, X_val: np.ndarray,
              y_val: np.ndarray) -> Params:
