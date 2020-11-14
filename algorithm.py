@@ -49,7 +49,7 @@ TEST_SIZE = 0.2
 TRAINING_PARAMS = {
     'checkpoint_callback': False,
     'deterministic': True,
-    'fast_dev_run': True,
+    'fast_dev_run': False,
     'logger': False,
     'progress_bar_refresh_rate': 0,
     'weights_summary': None,
