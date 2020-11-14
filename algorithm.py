@@ -842,8 +842,8 @@ def main() -> None:
 # Put your classifier in this map to have it run in the
 # training/tuning.
 MODEL = OrderedDict([
-    ('efficientnet', Forward(EfficientNetB0)),
     ('resnet', Forward(resnet)),
+    ('efficientnet', Forward(EfficientNetB0)),
     # ('linear', Forward(linear)),
     # ('three_layer', Forward(ThreeLayer.build, ThreeLayer.tune)),
     ('lgb', Lgbm),
@@ -855,32 +855,32 @@ MODEL = OrderedDict([
 PARAMS = [
     {
         'dataset': 'FashionMNIST0.5',
-        'model': 'efficientnet',
+        'model': 'resnet',
         'params': {}
     },
     {
         'dataset': 'FashionMNIST0.6',
-        'model': 'efficientnet',
+        'model': 'resnet',
         'params': {}
     },
     {
         'dataset': 'CIFAR',
-        'model': 'efficientnet',
+        'model': 'resnet',
         'params': {}
     },
     {
         'dataset': 'FashionMNIST0.5',
-        'model': 'resnet',
+        'model': 'efficientnet',
         'params': {}
     },
     {
         'dataset': 'FashionMNIST0.6',
-        'model': 'resnet',
+        'model': 'efficientnet',
         'params': {}
     },
     {
         'dataset': 'CIFAR',
-        'model': 'resnet',
+        'model': 'efficientnet',
         'params': {}
     },
     # {
