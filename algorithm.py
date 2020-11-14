@@ -58,8 +58,11 @@ GPU_PARAMS = {'auto_select_gpus': True, 'gpus': -1, 'precision': PRECISION}
 # Extra pytorch lightning config for tpu training.
 TPU_PARAMS = {'accelerator': 'ddp', 'precision': PRECISION, 'tpu_cores': 8}
 
-# Evaluation metrics.
-KEYS = ['acc_val', 'acc', 'acc_val_hat', 'acc_hat', 'T_hat_err', 'T_hat']
+# Top1 accuracy, transition matrix RRE.
+EVALUATION_METRICS = [
+    'acc_hat', 'acc', 'acc_val_hat', 'acc_val', 'acc_clean', 'T_hat_RRE',
+    'T_hat'
+]
 
 # Datasets and corresponding transition matrices.
 DATA = OrderedDict([
@@ -622,11 +625,16 @@ class Forward:
             return
         T = from_numpy(T).to(DEVICE)
         sm = nn.Softmax(dim=1)
+        self._dT = torch.zeros_like(T, requires_grad=True)
 
         def transform(x: Tensor, T: Tensor = T) -> Tensor:
-            return sm(T @ sm(x).T).T
+            return sm((T + self._dT) @ sm(x).T).T
 
         NeuralNet.do_training(self._model, X, y, X_val, y_val, transform)
+
+    def dT() -> np.ndarray:
+        """Slack variable."""
+        return self._dT.numpy()
 
     def tune(self, X: np.ndarray, y: np.ndarray, X_val: np.ndarray,
              y_val: np.ndarray) -> Params:
@@ -735,23 +743,35 @@ def evaluate(model, params: Dict[str, any]) -> Tuple[float, float]:
     if isinstance(model, Forward):
         model.train(params['params'], Xtr, Str, Xtr_val, Str_val, ret['T_hat'],
                     True)
-    ret['T_hat_err'] = np.linalg.norm(T - ret['T_hat'])
+        ret['T_hat'] += model.dT()
+    ret['T_hat_RRE'] = np.linalg.norm(T - ret['T_hat']) / np.linalg.norm(T)
     ret['acc_val_hat'] = top1_accuracy(model(Xtr_val, ret['T_hat']), Str_val)
     ret['acc_hat'] = top1_accuracy(model(Xts, ret['T_hat'], True), Yts)
+    Xts_tr, Xts_ts, Yts_tr, Yts_ts = train_test_split(Xts, Yts, test_size=0.2)
+    model.train(params['params'], Xts_tr, Yts_tr, Xts_ts, Yts_ts)
+    ret['acc_clean'] = top1_accuracy(model(Xts_ts), Yts_ts)
     return ret
 
 
 def evaluate_batch(model, params: Dict[str, any]) -> Dict[str, any]:
     """Run ten evaluation rounds and get the mean and stdev."""
     results = [evaluate(model, params) for _ in range(N_TRIAL)]
-    u = {k: np.mean([r[k] for r in results], axis=0) for k in KEYS}
-    x = {f'{k}_std': np.std([r[k] for r in results], axis=0) for k in KEYS}
+    u = {
+        k: np.mean([r[k] for r in results], axis=0)
+        for k in EVALUATION_METRICS
+    }
+    x = {
+        f'{k}_std': np.std([r[k] for r in results], axis=0)
+        for k in EVALUATION_METRICS
+    }
     return {'dataset': params['dataset'], **u, **x}
 
 
 def train() -> None:
     """Run training and output evaluation results in csv format."""
-    headers = ['ts', 'dataset', 'model'] + KEYS + [f'{k}_std' for k in KEYS]
+    headers = ['ts', 'dataset', 'model'] + EVALUATION_METRICS + [
+        f'{k}_std' for k in EVALUATION_METRICS
+    ]
     w = csv.DictWriter(sys.stdout, headers)
     w.writeheader()
     for params in PARAMS:
