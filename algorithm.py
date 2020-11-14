@@ -637,7 +637,7 @@ class Forward:
 
     def dT(self) -> np.ndarray:
         """Slack variable."""
-        return self._dT.cpu().numpy()
+        return self._dT.cpu().detach().numpy()
 
     def tune(self, X: np.ndarray, y: np.ndarray, X_val: np.ndarray,
              y_val: np.ndarray) -> Params:
