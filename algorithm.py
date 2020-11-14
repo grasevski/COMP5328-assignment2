@@ -627,16 +627,11 @@ class Forward:
             NeuralNet.do_training(self._model, X, y, X_val, y_val)
             return
         T = from_numpy(T).to(DEVICE)
-        self._dT = torch.zeros_like(T, requires_grad=True)
 
         def transform(x: Tensor, T: Tensor = T) -> Tensor:
-            return ((T + self._dT) @ F.softmax(x, dim=1).T).T
+            return (T @ F.softmax(x, dim=1).T).T
 
         NeuralNet.do_training(self._model, X, y, X_val, y_val, transform)
-
-    def dT(self) -> np.ndarray:
-        """Slack variable."""
-        return self._dT.cpu().detach().numpy()
 
     def tune(self, X: np.ndarray, y: np.ndarray, X_val: np.ndarray,
              y_val: np.ndarray) -> Params:
@@ -686,15 +681,7 @@ class NeuralNetWrapper(pl.LightningModule):
 
     def training_step(self, batch: Tuple[Tensor, Tensor], _) -> Tensor:
         """Minimize cross entropy."""
-        X, y = batch
-        g = self._model(X)
-        if not self._transform:
-            return F.cross_entropy(g, y)
-        f = self._transform(g)
-        r = torch.arange(len(y))
-        fs, gs = F.softmax(f, dim=1), F.softmax(g, dim=1)
-        w = gs[r, y] / fs[r, y]
-        return (F.cross_entropy(f, y, reduction='none') * w).mean()
+        return F.cross_entropy(self(batch[0]), batch[1])
 
     def validation_step(self, batch, batch_nb):
         """Early stopping based on validation accuracy."""
@@ -753,7 +740,6 @@ def evaluate(model, params: Dict[str, any]) -> Tuple[float, float]:
     if isinstance(model, Forward):
         model.train(params['params'], Xtr, Str, Xtr_val, Str_val, ret['T_hat'],
                     True)
-        ret['T_hat'] += model.dT()
     ret['T_hat_RRE'] = np.linalg.norm(T - ret['T_hat']) / np.linalg.norm(T)
     ret['acc_val_hat'] = top1_accuracy(model(Xtr_val, ret['T_hat']), Str_val)
     ret['acc_hat'] = top1_accuracy(model(Xts, ret['T_hat'], True), Yts)
