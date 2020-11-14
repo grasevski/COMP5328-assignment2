@@ -763,6 +763,7 @@ def train() -> None:
             **evaluate_batch(model, params)
         })
         if isinstance(model, Forward):
+            pl.seed_everything(0)
             w.writerow({
                 'ts': str(datetime.datetime.now()),
                 'model': f'{params["model"]}_backward',
