@@ -42,6 +42,9 @@ PRECISION = 16
 # Worker processes for data loading.
 NUM_WORKERS = os.cpu_count()
 
+# Train test split.
+TEST_SIZE = 0.2
+
 # https://pytorch-lightning.readthedocs.io/en/latest/trainer.html#trainer-class-api
 TRAINING_PARAMS = {
     'checkpoint_callback': False,
@@ -632,7 +635,7 @@ class Forward:
 
         NeuralNet.do_training(self._model, X, y, X_val, y_val, transform)
 
-    def dT() -> np.ndarray:
+    def dT(self) -> np.ndarray:
         """Slack variable."""
         return self._dT.numpy()
 
@@ -747,7 +750,10 @@ def evaluate(model, params: Dict[str, any]) -> Tuple[float, float]:
     ret['T_hat_RRE'] = np.linalg.norm(T - ret['T_hat']) / np.linalg.norm(T)
     ret['acc_val_hat'] = top1_accuracy(model(Xtr_val, ret['T_hat']), Str_val)
     ret['acc_hat'] = top1_accuracy(model(Xts, ret['T_hat'], True), Yts)
-    Xts_tr, Xts_ts, Yts_tr, Yts_ts = train_test_split(Xts, Yts, test_size=0.2)
+    Xts_tr, Xts_ts, Yts_tr, Yts_ts = train_test_split(Xts,
+                                                      Yts,
+                                                      test_size=TEST_SIZE,
+                                                      random_state=0)
     model.train(params['params'], Xts_tr, Yts_tr, Xts_ts, Yts_ts)
     ret['acc_clean'] = top1_accuracy(model(Xts_ts), Yts_ts)
     return ret
@@ -799,7 +805,10 @@ def load(
     with np.load(f'data/{dataset}.npz') as data:
         Xtr, Xts = data['Xtr'], data['Xts']
         Str, Yts = data['Str'].astype(np.int64), data['Yts'].astype(np.int64)
-        Xtr, Xtr_val, Str, Str_val = train_test_split(Xtr, Str, test_size=0.2)
+        Xtr, Xtr_val, Str, Str_val = train_test_split(Xtr,
+                                                      Str,
+                                                      test_size=TEST_SIZE,
+                                                      random_state=0)
     T = np.array(DATA[dataset], np.float32)
     return Xtr, Str, Xtr_val, Str_val, T, Xts, Yts
 
