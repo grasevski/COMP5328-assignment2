@@ -627,7 +627,6 @@ class Forward:
             NeuralNet.do_training(self._model, X, y, X_val, y_val)
             return
         T = from_numpy(T).to(DEVICE)
-        sm = nn.Softmax(dim=1)
         self._dT = torch.zeros_like(T, requires_grad=True)
 
         def transform(x: Tensor, T: Tensor = T) -> Tensor:
@@ -687,7 +686,15 @@ class NeuralNetWrapper(pl.LightningModule):
 
     def training_step(self, batch: Tuple[Tensor, Tensor], _) -> Tensor:
         """Minimize cross entropy."""
-        return F.cross_entropy(self(batch[0]), batch[1])
+        X, y = batch
+        g = self._model(X)
+        if not self._transform:
+            return F.cross_entropy(g, y)
+        f = self._transform(g)
+        r = torch.arange(len(y))
+        fs, gs = F.softmax(f, dim=1), F.softmax(g, dim=1)
+        w = gs[r, y] / fs[r, y]
+        return (F.cross_entropy(f, y, reduction='none') * w).mean()
 
     def validation_step(self, batch, batch_nb):
         """Early stopping based on validation accuracy."""
