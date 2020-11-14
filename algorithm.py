@@ -631,7 +631,7 @@ class Forward:
         self._dT = torch.zeros_like(T, requires_grad=True)
 
         def transform(x: Tensor, T: Tensor = T) -> Tensor:
-            return sm((T + self._dT) @ sm(x).T).T
+            return ((T + self._dT) @ F.softmax(x, dim=1).T).T
 
         NeuralNet.do_training(self._model, X, y, X_val, y_val, transform)
 
