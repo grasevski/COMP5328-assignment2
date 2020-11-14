@@ -40,7 +40,7 @@ BATCH_SIZE = 1024
 PRECISION = 16
 
 # Worker processes for data loading.
-NUM_WORKERS = os.cpu_count()
+NUM_WORKERS = 0
 
 # Train test split.
 TEST_SIZE = 0.2
