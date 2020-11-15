@@ -766,6 +766,7 @@ def evaluate(model, params: Dict[str, any]) -> Tuple[float, float]:
 
 def evaluate_batch(model, params: Dict[str, any]) -> Dict[str, any]:
     """Run ten evaluation rounds and get the mean and stdev."""
+    pl.seed_everything(0)
     results = [evaluate(model, params) for _ in range(N_TRIAL)]
     u = {
         k: np.mean([r[k] for r in results], axis=0)
@@ -786,7 +787,6 @@ def train() -> None:
     w = csv.DictWriter(sys.stdout, headers)
     w.writeheader()
     for params in PARAMS:
-        pl.seed_everything(0)
         model = MODEL[params['model']]
         w.writerow({
             'ts': str(datetime.datetime.now()),
@@ -794,7 +794,6 @@ def train() -> None:
             **evaluate_batch(model, params)
         })
         if isinstance(model, Forward):
-            pl.seed_everything(0)
             w.writerow({
                 'ts': str(datetime.datetime.now()),
                 'model': f'{params["model"]}_backward',
