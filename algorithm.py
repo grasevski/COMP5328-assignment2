@@ -560,7 +560,7 @@ class NeuralNet:
         pruner = optuna.pruners.MedianPruner()
         study = optuna.create_study(direction='maximize', pruner=pruner)
         f = functools.partial(self._objective, X, y, X_val, y_val)
-        study.optimize(f, n_trials=100, n_jobs=-1)
+        study.optimize(f, n_trials=100)
         return study.best_params
 
     @staticmethod
@@ -833,7 +833,7 @@ def tune() -> None:
     """Run hyperparam tuning and output params in jsonl format."""
     optuna.logging.set_verbosity(optuna.logging.WARNING)
     w = jsonlines.Writer(sys.stdout, flush=True)
-    for dataset, (name, model) in itertools.product(DATA, MODEL.items()):
+    for (name, model), dataset in itertools.product(MODEL.items(), DATA):
         pl.seed_everything(0)
         Xtr, Str, Xtr_val, Str_val, _, _, _ = load(dataset)
         w.write({
