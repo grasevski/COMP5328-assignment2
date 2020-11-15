@@ -391,9 +391,13 @@ def resnet(in_dim: Size, params: Params) -> nn.Module:
 
 def lenet(in_dim: Size, params: Params) -> nn.Module:
     """Simple CNN."""
-    return nn.Sequential(nn.Conv2d(in_dim[0], 6, 5), nn.ReLU(),
-                         nn.MaxPool2d(2), nn.Conv2d(6, 16, 5), nn.MaxPool2d(2),
-                         nn.Flatten(), nn.Linear(16 * 5 * 5, 120), nn.ReLU(),
+    conv = nn.Sequential(nn.Conv2d(in_dim[0], 6, 5), nn.ReLU(),
+                         nn.MaxPool2d(2), nn.Conv2d(6, 16, 5), nn.ReLU(),
+                         nn.MaxPool2d(2), nn.Flatten())
+    conv.eval()
+    with no_grad():
+        out_dim = conv(torch.zeros(1, *in_dim)).shape[1]
+    return nn.Sequential(conv, nn.Linear(out_dim, 120), nn.ReLU(),
                          nn.Linear(120, 84), nn.ReLU(), nn.Linear(84, N_CLASS))
 
 
