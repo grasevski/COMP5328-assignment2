@@ -793,12 +793,14 @@ def train() -> None:
             'model': params['model'],
             **evaluate_batch(model, params)
         })
+        sys.stdout.flush()
         if isinstance(model, Forward):
             w.writerow({
                 'ts': str(datetime.datetime.now()),
                 'model': f'{params["model"]}_backward',
                 **evaluate_batch(model.backward(), params)
             })
+            sys.stdout.flush()
 
 
 def load(
