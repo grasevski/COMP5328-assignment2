@@ -594,7 +594,7 @@ class NeuralNet:
                     callbacks: List[pl.Callback] = []) -> None:
         """Main neural network training loop."""
         params = TRAINING_PARAMS.copy()
-        params['callbacks'] = [EarlyStopping('val_acc', mode='max')]
+        params['callbacks'] = [EarlyStopping('val_loss')]
         params['callbacks'] += callbacks
         if DEVICE == 'cuda':
             params = {**params, **GPU_PARAMS}
@@ -697,7 +697,10 @@ class NeuralNetWrapper(pl.LightningModule):
 
     def validation_step(self, batch, batch_nb):
         """Early stopping based on validation accuracy."""
-        self.log('val_acc', top1_accuracy(self(batch[0]), batch[1]))
+        X, y = batch
+        pred = self(X)
+        self.log('val_acc', top1_accuracy(pred, y))
+        self.log('val_loss', F.cross_entropy(pred, y))
 
 
 def linear(in_dim: Size, _: Params) -> nn.Module:
