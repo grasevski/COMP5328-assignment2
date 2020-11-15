@@ -545,7 +545,13 @@ class NeuralNet:
               callbacks: List[pl.Callback] = []) -> Model:
         """Train using the backwards method."""
         model = NeuralNet.build(self._build, params, X, y)
-        NeuralNet.do_training(model, X, y, X_val, y_val, callbacks=callbacks)
+        NeuralNet.do_training(model,
+                              params['weight_decay'],
+                              X,
+                              y,
+                              X_val,
+                              y_val,
+                              callbacks=callbacks)
         return functools.partial(NeuralNet.predict, model)
 
     def tune(self, X: np.ndarray, y: np.ndarray, X_val: np.ndarray,
@@ -570,12 +576,11 @@ class NeuralNet:
             metrics_callback,
             PyTorchLightningPruningCallback(trial, monitor='val_acc')
         ]
-        model = self.train(self._tune(NeuralNet._in_dim(X), trial),
-                           X,
-                           y,
-                           X_val,
-                           y_val,
-                           callbacks=callbacks)
+        weight_decay = trial.suggest_uniform('weight_decay', 0, 0.5)
+        params = {'weight_decay': weight_decay}
+        if self._tune:
+            params = {**params, **self._tune(NeuralNet._in_dim(X), trial)}
+        model = self.train(params, X, y, X_val, y_val, callbacks=callbacks)
         return metrics_callback.metrics[-1]['val_acc'].item()
 
     @staticmethod
@@ -586,6 +591,7 @@ class NeuralNet:
 
     @staticmethod
     def do_training(model: nn.Module,
+                    weight_decay: float,
                     X: np.ndarray,
                     y: np.ndarray,
                     X_val: np.ndarray,
@@ -603,7 +609,8 @@ class NeuralNet:
         trainer = pl.Trainer(**params)
         train_dl = NeuralNet._data_loader(X, y)
         val_dl = NeuralNet._data_loader(X_val, y_val)
-        trainer.fit(NeuralNetWrapper(model, transform), train_dl, val_dl)
+        model = NeuralNetWrapper(model, weight_decay, transform)
+        trainer.fit(model, train_dl, val_dl)
 
     @staticmethod
     def _data_loader(X: np.ndarray, y: np.ndarray) -> DataLoader:
@@ -636,14 +643,16 @@ class Forward:
         if not reuse:
             self._model = NeuralNet.build(self._build, params, X, y)
         if T is None:
-            NeuralNet.do_training(self._model, X, y, X_val, y_val)
+            NeuralNet.do_training(self._model, params['weight_decay'], X, y,
+                                  X_val, y_val)
             return
         T = from_numpy(T).to(DEVICE)
 
         def transform(x: Tensor, T: Tensor = T) -> Tensor:
             return (T @ F.softmax(x, dim=1).T).T
 
-        NeuralNet.do_training(self._model, X, y, X_val, y_val, transform)
+        NeuralNet.do_training(self._model, params['weight_decay'], X, y, X_val,
+                              y_val, transform)
 
     def tune(self, X: np.ndarray, y: np.ndarray, X_val: np.ndarray,
              y_val: np.ndarray) -> Params:
@@ -675,10 +684,12 @@ class MetricsCallback(pl.Callback):
 
 class NeuralNetWrapper(pl.LightningModule):
     """Use pytorch lightning interface for multicore training."""
-    def __init__(self, model: nn.Module, transform: Optional[Transform]):
+    def __init__(self, model: nn.Module, weight_decay: float,
+                 transform: Optional[Transform]):
         """Wrap pytorch model in lightning interface."""
         super().__init__()
         self._model, self._transform = model, transform
+        self._weight_decay = weight_decay
 
     def forward(self, x: Tensor) -> Tensor:
         """Apply transition matrix if necessary."""
@@ -689,7 +700,7 @@ class NeuralNetWrapper(pl.LightningModule):
 
     def configure_optimizers(self) -> Optimizer:
         """Just use plain Adam for now."""
-        return Adam(self.parameters())
+        return Adam(self.parameters(), weight_decay=self._weight_decay)
 
     def training_step(self, batch: Tuple[Tensor, Tensor], _) -> Tensor:
         """Minimize cross entropy."""
@@ -852,10 +863,10 @@ MODEL = OrderedDict([
     ('lenet', Forward(lenet)),
     ('resnet', Forward(resnet)),
     ('efficientnet', Forward(EfficientNetB0)),
-    # ('linear', Forward(linear)),
-    # ('three_layer', Forward(ThreeLayer.build, ThreeLayer.tune)),
+    ('linear', Forward(linear)),
+    ('three_layer', Forward(ThreeLayer.build, ThreeLayer.tune)),
     ('lgb', Lgbm),
-    # ('logistic', LR),
+    ('logistic', LR),
 ])
 
 # This defines which (dataset, model, params) combinations to train
@@ -864,47 +875,65 @@ PARAMS = [
     {
         'dataset': 'FashionMNIST0.5',
         'model': 'lenet',
-        'params': {}
+        'params': {
+            'weight_decay': 0
+        }
     },
     {
         'dataset': 'FashionMNIST0.6',
         'model': 'lenet',
-        'params': {}
+        'params': {
+            'weight_decay': 0
+        }
     },
     {
         'dataset': 'CIFAR',
         'model': 'lenet',
-        'params': {}
+        'params': {
+            'weight_decay': 0
+        }
     },
     {
         'dataset': 'FashionMNIST0.5',
         'model': 'resnet',
-        'params': {}
+        'params': {
+            'weight_decay': 0
+        }
     },
     {
         'dataset': 'FashionMNIST0.6',
         'model': 'resnet',
-        'params': {}
+        'params': {
+            'weight_decay': 0
+        }
     },
     {
         'dataset': 'CIFAR',
         'model': 'resnet',
-        'params': {}
+        'params': {
+            'weight_decay': 0
+        }
     },
     {
         'dataset': 'FashionMNIST0.5',
         'model': 'efficientnet',
-        'params': {}
+        'params': {
+            'weight_decay': 0
+        }
     },
     {
         'dataset': 'FashionMNIST0.6',
         'model': 'efficientnet',
-        'params': {}
+        'params': {
+            'weight_decay': 0
+        }
     },
     {
         'dataset': 'CIFAR',
         'model': 'efficientnet',
-        'params': {}
+        'params': {
+            'weight_decay': 0
+        }
     },
     # {
     #     "ts": "2020-11-09 21:27:04.115906",
