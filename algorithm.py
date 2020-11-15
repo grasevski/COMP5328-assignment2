@@ -786,6 +786,7 @@ def train() -> None:
     ]
     w = csv.DictWriter(sys.stdout, headers)
     w.writeheader()
+    sys.stdout.flush()
     for params in PARAMS:
         model = MODEL[params['model']]
         w.writerow({
