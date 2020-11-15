@@ -557,8 +557,6 @@ class NeuralNet:
     def tune(self, X: np.ndarray, y: np.ndarray, X_val: np.ndarray,
              y_val: np.ndarray) -> Params:
         """Optuna hyperparam tuning."""
-        if not self._tune:
-            return {}
         pruner = optuna.pruners.MedianPruner()
         study = optuna.create_study(direction='maximize', pruner=pruner)
         f = functools.partial(self._objective, X, y, X_val, y_val)
