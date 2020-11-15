@@ -389,6 +389,14 @@ def resnet(in_dim: Size, params: Params) -> nn.Module:
     return ResNet18(in_dim)
 
 
+def lenet(in_dim: Size, params: Params) -> nn.Module:
+    """Simple CNN."""
+    return nn.Sequential(nn.Conv2d(in_dim[0], 6, 5), nn.ReLU(),
+                         nn.MaxPool2d(2), nn.Conv2d(6, 16, 5), nn.MaxPool2d(2),
+                         nn.Flatten(), nn.Linear(16 * 5 * 5, 120), nn.ReLU(),
+                         nn.Linear(120, 84), nn.ReLU(), nn.Linear(84, N_CLASS))
+
+
 # Type declarations.
 Model = Callable[[np.ndarray], np.ndarray]
 Net = Callable[[int, int, Params], nn.Module]
@@ -835,6 +843,7 @@ def main() -> None:
 # Put your classifier in this map to have it run in the
 # training/tuning.
 MODEL = OrderedDict([
+    ('lenet', Forward(lenet)),
     ('resnet', Forward(resnet)),
     ('efficientnet', Forward(EfficientNetB0)),
     # ('linear', Forward(linear)),
@@ -846,6 +855,21 @@ MODEL = OrderedDict([
 # This defines which (dataset, model, params) combinations to train
 # and evaluate. Put your config here to have it run in the training.
 PARAMS = [
+    {
+        'dataset': 'FashionMNIST0.5',
+        'model': 'lenet',
+        'params': {}
+    },
+    {
+        'dataset': 'FashionMNIST0.6',
+        'model': 'lenet',
+        'params': {}
+    },
+    {
+        'dataset': 'CIFAR',
+        'model': 'lenet',
+        'params': {}
+    },
     {
         'dataset': 'FashionMNIST0.5',
         'model': 'resnet',
