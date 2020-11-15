@@ -391,8 +391,8 @@ def resnet(in_dim: Size, params: Params) -> nn.Module:
 
 def lenet(in_dim: Size, params: Params) -> nn.Module:
     """Simple CNN."""
-    conv = nn.Sequential(nn.Conv2d(in_dim[0], 6, 5), nn.ReLU(),
-                         nn.MaxPool2d(2), nn.Conv2d(6, 16, 5), nn.ReLU(),
+    conv = nn.Sequential(nn.Conv2d(in_dim[0], 6, 3), nn.ReLU(),
+                         nn.MaxPool2d(2), nn.Conv2d(6, 16, 3), nn.ReLU(),
                          nn.MaxPool2d(2), nn.Flatten())
     conv.eval()
     with no_grad():
