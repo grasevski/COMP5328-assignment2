@@ -20,6 +20,7 @@ from optuna.integration import PyTorchLightningPruningCallback
 import numpy as np
 from scipy.special import softmax
 from sklearn.linear_model import LogisticRegression
+from sklearn.metrics import log_loss
 from sklearn.model_selection import train_test_split
 import torch
 from torch import nn, Size, Tensor, from_numpy, no_grad, stack
@@ -385,7 +386,6 @@ def ResNet152(in_dim: Size):
 
 def resnet(in_dim: Size, params: Params) -> nn.Module:
     """Take input dimensions and params dictionary and output net."""
-    # TODO Johns code goes here.
     return ResNet18(in_dim)
 
 
@@ -495,7 +495,7 @@ class LR:
     def tune(X: np.ndarray, y: np.ndarray, X_val: np.ndarray,
              y_val: np.ndarray) -> Params:
         """Hyperparam tuning using generic optuna integration."""
-        study = optuna.create_study(direction='maximize')
+        study = optuna.create_study(direction='minimize')
         f = functools.partial(LR._objective, X, y, X_val, y_val)
         study.optimize(f, n_trials=100, n_jobs=-1)
         return study.best_params
@@ -512,7 +512,7 @@ class LR:
                                    multi_class=multi_class,
                                    n_jobs=-1)
         model.fit(X, y)
-        return top1_accuracy(model.predict_proba(X_val), y_val)
+        return log_loss(model.predict_proba(X_val), y_val)
 
 
 class NeuralNet:
@@ -545,20 +545,16 @@ class NeuralNet:
               callbacks: List[pl.Callback] = []) -> Model:
         """Train using the backwards method."""
         model = NeuralNet.build(self._build, params, X, y)
-        NeuralNet.do_training(model,
-                              params['weight_decay'],
-                              X,
-                              y,
-                              X_val,
-                              y_val,
-                              callbacks=callbacks)
+        NeuralNet.do_training(model, X, y, X_val, y_val, callbacks=callbacks)
         return functools.partial(NeuralNet.predict, model)
 
     def tune(self, X: np.ndarray, y: np.ndarray, X_val: np.ndarray,
              y_val: np.ndarray) -> Params:
         """Optuna hyperparam tuning."""
+        if not self._tune:
+            return {}
         pruner = optuna.pruners.MedianPruner()
-        study = optuna.create_study(direction='maximize', pruner=pruner)
+        study = optuna.create_study(direction='minimize', pruner=pruner)
         f = functools.partial(self._objective, X, y, X_val, y_val)
         study.optimize(f, n_trials=100)
         return study.best_params
@@ -572,14 +568,11 @@ class NeuralNet:
         metrics_callback = MetricsCallback()
         callbacks = [
             metrics_callback,
-            PyTorchLightningPruningCallback(trial, monitor='val_acc')
+            PyTorchLightningPruningCallback(trial, monitor='val_loss')
         ]
-        weight_decay = trial.suggest_uniform('weight_decay', 0, 0.5)
-        params = {'weight_decay': weight_decay}
-        if self._tune:
-            params = {**params, **self._tune(NeuralNet._in_dim(X), trial)}
+        params = self._tune(NeuralNet._in_dim(X), trial)
         model = self.train(params, X, y, X_val, y_val, callbacks=callbacks)
-        return metrics_callback.metrics[-1]['val_acc'].item()
+        return metrics_callback.metrics[-1]['val_loss'].item()
 
     @staticmethod
     def build(builder: Net, params: Params, X: np.ndarray,
@@ -589,7 +582,6 @@ class NeuralNet:
 
     @staticmethod
     def do_training(model: nn.Module,
-                    weight_decay: float,
                     X: np.ndarray,
                     y: np.ndarray,
                     X_val: np.ndarray,
@@ -598,7 +590,7 @@ class NeuralNet:
                     callbacks: List[pl.Callback] = []) -> None:
         """Main neural network training loop."""
         params = TRAINING_PARAMS.copy()
-        params['callbacks'] = [EarlyStopping('val_acc', mode='max')]
+        params['callbacks'] = [EarlyStopping('val_loss')]
         params['callbacks'] += callbacks
         if DEVICE == 'cuda':
             params = {**params, **GPU_PARAMS}
@@ -607,8 +599,7 @@ class NeuralNet:
         trainer = pl.Trainer(**params)
         train_dl = NeuralNet._data_loader(X, y)
         val_dl = NeuralNet._data_loader(X_val, y_val)
-        model = NeuralNetWrapper(model, weight_decay, transform)
-        trainer.fit(model, train_dl, val_dl)
+        trainer.fit(NeuralNetWrapper(model, transform), train_dl, val_dl)
 
     @staticmethod
     def _data_loader(X: np.ndarray, y: np.ndarray) -> DataLoader:
@@ -641,16 +632,14 @@ class Forward:
         if not reuse:
             self._model = NeuralNet.build(self._build, params, X, y)
         if T is None:
-            NeuralNet.do_training(self._model, params['weight_decay'], X, y,
-                                  X_val, y_val)
+            NeuralNet.do_training(self._model, X, y, X_val, y_val)
             return
         T = from_numpy(T).to(DEVICE)
 
         def transform(x: Tensor, T: Tensor = T) -> Tensor:
             return (T @ F.softmax(x, dim=1).T).T
 
-        NeuralNet.do_training(self._model, params['weight_decay'], X, y, X_val,
-                              y_val, transform)
+        NeuralNet.do_training(self._model, X, y, X_val, y_val, transform)
 
     def tune(self, X: np.ndarray, y: np.ndarray, X_val: np.ndarray,
              y_val: np.ndarray) -> Params:
@@ -682,12 +671,10 @@ class MetricsCallback(pl.Callback):
 
 class NeuralNetWrapper(pl.LightningModule):
     """Use pytorch lightning interface for multicore training."""
-    def __init__(self, model: nn.Module, weight_decay: float,
-                 transform: Optional[Transform]):
+    def __init__(self, model: nn.Module, transform: Optional[Transform]):
         """Wrap pytorch model in lightning interface."""
         super().__init__()
         self._model, self._transform = model, transform
-        self._weight_decay = weight_decay
 
     def forward(self, x: Tensor) -> Tensor:
         """Apply transition matrix if necessary."""
@@ -698,15 +685,15 @@ class NeuralNetWrapper(pl.LightningModule):
 
     def configure_optimizers(self) -> Optimizer:
         """Just use plain Adam for now."""
-        return Adam(self.parameters(), weight_decay=self._weight_decay)
+        return Adam(self.parameters())
 
     def training_step(self, batch: Tuple[Tensor, Tensor], _) -> Tensor:
         """Minimize cross entropy."""
         return F.cross_entropy(self(batch[0]), batch[1])
 
     def validation_step(self, batch, batch_nb):
-        """Early stopping based on validation accuracy."""
-        self.log('val_acc', top1_accuracy(self(batch[0]), batch[1]))
+        """Early stopping based on validation loss."""
+        self.log('val_loss', training_step(batch, batch_nb))
 
 
 def linear(in_dim: Size, _: Params) -> nn.Module:
@@ -714,23 +701,10 @@ def linear(in_dim: Size, _: Params) -> nn.Module:
     return nn.Sequential(nn.Flatten(), nn.Linear(np.prod(in_dim), N_CLASS))
 
 
-class ThreeLayer:
+def three_layer(in_dim: Size, _: Params) -> nn.Module:
     """The simplest possible universal function approximator."""
-    @staticmethod
-    def build(in_dim: Size, params: Params) -> nn.Module:
-        """Create the network, ready to be trained."""
-        d = params['hidden_dim']
-        return nn.Sequential(nn.Flatten(), nn.Linear(np.prod(in_dim), d),
-                             nn.ReLU(), nn.Linear(d, d), nn.ReLU(),
-                             nn.Linear(d, N_CLASS))
-
-    @staticmethod
-    def tune(in_dim: Size, trial: Trial) -> Params:
-        """Tune the dimension of the hidden layer."""
-        in_dim = np.prod(in_dim)
-        low, high = min(in_dim, N_CLASS), max(in_dim, N_CLASS)
-        hidden_dim = trial.suggest_int('hidden_dim', low, high, log=True)
-        return {'hidden_dim': hidden_dim}
+    d = in_dim[-1]
+    return nn.Sequential(nn.Flatten(), nn.Linear(np.prod(in_dim), d), nn.ReLU(), nn.Linear(d, d), nn.ReLU(), nn.Linear(d, N_CLASS))
 
 
 def top1_accuracy(pred, y):
@@ -863,7 +837,7 @@ def main() -> None:
 MODEL = OrderedDict([
     ('lenet', Forward(lenet)),
     ('linear', Forward(linear)),
-    ('three_layer', Forward(ThreeLayer.build, ThreeLayer.tune)),
+    ('three_layer', Forward(three_layer)),
     ('resnet', Forward(resnet)),
     ('efficientnet', Forward(EfficientNetB0)),
     ('lgb', Lgbm),
@@ -878,124 +852,91 @@ TRAINING_CONFIG = [
         "ts": "2020-11-15 11:48:48.102443",
         "dataset": "FashionMNIST0.5",
         "model": "lenet",
-        "params": {
-            "weight_decay": 0.0009159558374451208
-        }
+        "params": {}
     },
     {
         "ts": "2020-11-15 11:51:39.103756",
         "dataset": "FashionMNIST0.6",
         "model": "lenet",
-        "params": {
-            "weight_decay": 0.050737210358809626
-        }
+        "params": {}
     },
     {
         "ts": "2020-11-15 11:54:02.551430",
         "dataset": "CIFAR",
         "model": "lenet",
-        "params": {
-            "weight_decay": 0.32194598811933006
-        }
+        "params": {}
     },
     {
         "ts": "2020-11-15 11:56:17.555409",
         "dataset": "FashionMNIST0.5",
         "model": "linear",
-        "params": {
-            "weight_decay": 0.0560690618480601
-        }
+        "params": {}
     },
     {
         "ts": "2020-11-15 11:57:56.454801",
         "dataset": "FashionMNIST0.6",
         "model": "linear",
-        "params": {
-            "weight_decay": 0.2265769521694797
-        }
+        "params": {}
     },
     {
         "ts": "2020-11-15 11:59:45.252627",
         "dataset": "CIFAR",
         "model": "linear",
-        "params": {
-            "weight_decay": 0.37300164685216425
-        }
+        "params": {}
     },
     {
         "ts": "2020-11-15 12:01:34.037183",
         "dataset": "FashionMNIST0.5",
         "model": "three_layer",
-        "params": {
-            "weight_decay": 0.006849964940623454,
-            "hidden_dim": 140
-        }
+        "params": {}
     },
     {
         "ts": "2020-11-15 12:04:11.208725",
         "dataset": "FashionMNIST0.6",
         "model": "three_layer",
-        "params": {
-            "weight_decay": 0.01114630559753499,
-            "hidden_dim": 143
-        }
+        "params": {}
     },
     {
         "ts": "2020-11-15 12:06:31.965749",
         "dataset": "CIFAR",
         "model": "three_layer",
-        "params": {
-            "weight_decay": 0.11740252696090739,
-            "hidden_dim": 17
-        }
+        "params": {}
     },
     {
         "ts": "2020-11-15 12:08:17.288374",
         "dataset": "FashionMNIST0.5",
         "model": "resnet",
-        "params": {
-            "weight_decay": 0.12464281311099178
-        }
+        "params": {}
     },
     {
         "ts": "2020-11-15 12:16:45.655240",
         "dataset": "FashionMNIST0.6",
         "model": "resnet",
-        "params": {
-            "weight_decay": 0.037675319281232855
-        }
+        "params": {}
     },
     {
         "ts": "2020-11-15 12:23:19.295852",
         "dataset": "CIFAR",
         "model": "resnet",
-        "params": {
-            "weight_decay": 0.07762198967377022
-        }
+        "params": {}
     },
     {
         "ts": "2020-11-15 12:31:43.131727",
         "dataset": "FashionMNIST0.5",
         "model": "efficientnet",
-        "params": {
-            "weight_decay": 0.00889616027423698
-        }
+        "params": {}
     },
     {
         "ts": "2020-11-15 12:44:26.128956",
         "dataset": "FashionMNIST0.6",
         "model": "efficientnet",
-        "params": {
-            "weight_decay": 0.08887653387064004
-        }
+        "params": {}
     },
     {
         "ts": "2020-11-15 12:55:25.431198",
         "dataset": "CIFAR",
         "model": "efficientnet",
-        "params": {
-            "weight_decay": 0.2979004112949729
-        }
+        "params": {}
     },
     {
         "ts": "2020-11-09 21:27:04.339063",
