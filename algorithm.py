@@ -859,10 +859,10 @@ def main() -> None:
 # training/tuning.
 MODEL = OrderedDict([
     ('lenet', Forward(lenet)),
-    ('resnet', Forward(resnet)),
-    ('efficientnet', Forward(EfficientNetB0)),
     ('linear', Forward(linear)),
     ('three_layer', Forward(ThreeLayer.build, ThreeLayer.tune)),
+    ('resnet', Forward(resnet)),
+    ('efficientnet', Forward(EfficientNetB0)),
     ('lgb', Lgbm),
     ('logistic', LR),
 ])
