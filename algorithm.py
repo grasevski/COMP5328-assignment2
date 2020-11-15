@@ -749,19 +749,19 @@ def make(model):
     return copy.copy(model) if isinstance(model, Forward) else Backward(model)
 
 
-def evaluate(model, params: Dict[str, any]) -> Tuple[float, float]:
+def evaluate(model, cfg: Dict[str, any]) -> Tuple[float, float]:
     """Run one evaluation round."""
     model = make(model)
-    Xtr, Str, Xtr_val, Str_val, T, Xts, Yts = load(params['dataset'])
-    model.train(params['params'], Xtr, Str, Xtr_val, Str_val, T)
+    Xtr, Str, Xtr_val, Str_val, T, Xts, Yts = load(cfg['dataset'])
+    model.train(cfg['params'], Xtr, Str, Xtr_val, Str_val, T)
     ret = {}
     ret['acc_val'] = top1_accuracy(model(Xtr_val, T), Str_val)
     ret['acc'] = top1_accuracy(model(Xts, T, True), Yts)
     if isinstance(model, Forward):
-        model.train(params['params'], Xtr, Str, Xtr_val, Str_val)
+        model.train(cfg['params'], Xtr, Str, Xtr_val, Str_val)
     ret['T_hat'] = estimate_transition_matrix(model, Xtr)
     if isinstance(model, Forward):
-        model.train(params['params'], Xtr, Str, Xtr_val, Str_val, ret['T_hat'],
+        model.train(cfg['params'], Xtr, Str, Xtr_val, Str_val, ret['T_hat'],
                     True)
     ret['T_hat_RRE'] = np.linalg.norm(T - ret['T_hat']) / np.linalg.norm(T)
     ret['acc_val_hat'] = top1_accuracy(model(Xtr_val, ret['T_hat']), Str_val)
@@ -770,15 +770,15 @@ def evaluate(model, params: Dict[str, any]) -> Tuple[float, float]:
                                                       Yts,
                                                       test_size=TEST_SIZE,
                                                       random_state=0)
-    model.train(params['params'], Xts_tr, Yts_tr, Xts_ts, Yts_ts)
+    model.train(cfg['params'], Xts_tr, Yts_tr, Xts_ts, Yts_ts)
     ret['acc_clean'] = top1_accuracy(model(Xts_ts), Yts_ts)
     return ret
 
 
-def evaluate_batch(model, params: Dict[str, any]) -> Dict[str, any]:
+def evaluate_batch(model, cfg: Dict[str, any]) -> Dict[str, any]:
     """Run ten evaluation rounds and get the mean and stdev."""
     pl.seed_everything(0)
-    results = [evaluate(model, params) for _ in range(N_TRIAL)]
+    results = [evaluate(model, cfg) for _ in range(N_TRIAL)]
     u = {
         k: np.mean([r[k] for r in results], axis=0)
         for k in EVALUATION_METRICS
@@ -787,7 +787,7 @@ def evaluate_batch(model, params: Dict[str, any]) -> Dict[str, any]:
         f'{k}_std': np.std([r[k] for r in results], axis=0)
         for k in EVALUATION_METRICS
     }
-    return {'dataset': params['dataset'], **u, **x}
+    return {'dataset': cfg['dataset'], **u, **x}
 
 
 def train() -> None:
@@ -798,19 +798,19 @@ def train() -> None:
     w = csv.DictWriter(sys.stdout, headers)
     w.writeheader()
     sys.stdout.flush()
-    for params in PARAMS:
-        model = MODEL[params['model']]
+    for cfg in TRAINING_CONFIG:
+        model = MODEL[cfg['model']]
         w.writerow({
             'ts': str(datetime.datetime.now()),
-            'model': params['model'],
-            **evaluate_batch(model, params)
+            'model': cfg['model'],
+            **evaluate_batch(model, cfg)
         })
         sys.stdout.flush()
         if isinstance(model, Forward):
             w.writerow({
                 'ts': str(datetime.datetime.now()),
-                'model': f'{params["model"]}_backward',
-                **evaluate_batch(model.backward(), params)
+                'model': f'{cfg["model"]}_backward',
+                **evaluate_batch(model.backward(), cfg)
             })
             sys.stdout.flush()
 
@@ -871,8 +871,9 @@ MODEL = OrderedDict([
 ])
 
 # This defines which (dataset, model, params) combinations to train
-# and evaluate. Put your config here to have it run in the training.
-PARAMS = [
+# and evaluate. It is taken from the output of the hyperparam
+# tuning. Put your config here to have it run in the training.
+TRAINING_CONFIG = [
     {
         "ts": "2020-11-15 11:48:48.102443",
         "dataset": "FashionMNIST0.5",
