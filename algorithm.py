@@ -744,12 +744,14 @@ def estimate_transition_matrix(model, X: np.ndarray) -> np.ndarray:
     return np.hstack([p[i][np.newaxis].T for i in p.argmax(axis=0)])
 
 
+def make(model):
+    """Create a new model to avoid overwriting the global variable."""
+    return copy.copy(model) if isinstance(model, Forward) else Backward(model)
+
+
 def evaluate(model, params: Dict[str, any]) -> Tuple[float, float]:
     """Run one evaluation round."""
-    if isinstance(model, Forward):
-        model = copy.copy(model)
-    else:
-        model = Backward(model)
+    model = make(model)
     Xtr, Str, Xtr_val, Str_val, T, Xts, Yts = load(params['dataset'])
     model.train(params['params'], Xtr, Str, Xtr_val, Str_val, T)
     ret = {}
@@ -835,6 +837,7 @@ def tune() -> None:
     w = jsonlines.Writer(sys.stdout, flush=True)
     for (name, model), dataset in itertools.product(MODEL.items(), DATA):
         pl.seed_everything(0)
+        model = make(model)
         Xtr, Str, Xtr_val, Str_val, _, _, _ = load(dataset)
         w.write({
             'ts': str(datetime.datetime.now()),
@@ -871,82 +874,128 @@ MODEL = OrderedDict([
 # and evaluate. Put your config here to have it run in the training.
 PARAMS = [
     {
-        'dataset': 'FashionMNIST0.5',
-        'model': 'lenet',
-        'params': {
-            'weight_decay': 0
+        "ts": "2020-11-15 11:48:48.102443",
+        "dataset": "FashionMNIST0.5",
+        "model": "lenet",
+        "params": {
+            "weight_decay": 0.0009159558374451208
         }
     },
     {
-        'dataset': 'FashionMNIST0.6',
-        'model': 'lenet',
-        'params': {
-            'weight_decay': 0
+        "ts": "2020-11-15 11:51:39.103756",
+        "dataset": "FashionMNIST0.6",
+        "model": "lenet",
+        "params": {
+            "weight_decay": 0.050737210358809626
         }
     },
     {
-        'dataset': 'CIFAR',
-        'model': 'lenet',
-        'params': {
-            'weight_decay': 0
+        "ts": "2020-11-15 11:54:02.551430",
+        "dataset": "CIFAR",
+        "model": "lenet",
+        "params": {
+            "weight_decay": 0.32194598811933006
         }
     },
     {
-        'dataset': 'FashionMNIST0.5',
-        'model': 'resnet',
-        'params': {
-            'weight_decay': 0
+        "ts": "2020-11-15 11:56:17.555409",
+        "dataset": "FashionMNIST0.5",
+        "model": "linear",
+        "params": {
+            "weight_decay": 0.0560690618480601
         }
     },
     {
-        'dataset': 'FashionMNIST0.6',
-        'model': 'resnet',
-        'params': {
-            'weight_decay': 0
+        "ts": "2020-11-15 11:57:56.454801",
+        "dataset": "FashionMNIST0.6",
+        "model": "linear",
+        "params": {
+            "weight_decay": 0.2265769521694797
         }
     },
     {
-        'dataset': 'CIFAR',
-        'model': 'resnet',
-        'params': {
-            'weight_decay': 0
+        "ts": "2020-11-15 11:59:45.252627",
+        "dataset": "CIFAR",
+        "model": "linear",
+        "params": {
+            "weight_decay": 0.37300164685216425
         }
     },
     {
-        'dataset': 'FashionMNIST0.5',
-        'model': 'efficientnet',
-        'params': {
-            'weight_decay': 0
+        "ts": "2020-11-15 12:01:34.037183",
+        "dataset": "FashionMNIST0.5",
+        "model": "three_layer",
+        "params": {
+            "weight_decay": 0.006849964940623454,
+            "hidden_dim": 140
         }
     },
     {
-        'dataset': 'FashionMNIST0.6',
-        'model': 'efficientnet',
-        'params': {
-            'weight_decay': 0
+        "ts": "2020-11-15 12:04:11.208725",
+        "dataset": "FashionMNIST0.6",
+        "model": "three_layer",
+        "params": {
+            "weight_decay": 0.01114630559753499,
+            "hidden_dim": 143
         }
     },
     {
-        'dataset': 'CIFAR',
-        'model': 'efficientnet',
-        'params': {
-            'weight_decay': 0
+        "ts": "2020-11-15 12:06:31.965749",
+        "dataset": "CIFAR",
+        "model": "three_layer",
+        "params": {
+            "weight_decay": 0.11740252696090739,
+            "hidden_dim": 17
         }
     },
-    # {
-    #     "ts": "2020-11-09 21:27:04.115906",
-    #     "dataset": "FashionMNIST0.5",
-    #     "model": "linear",
-    #     "params": {}
-    # },
-    # {
-    #     "ts": "2020-11-09 21:27:04.184178",
-    #     "dataset": "FashionMNIST0.5",
-    #     "model": "three_layer",
-    #     "params": {
-    #         "hidden_dim": 3
-    #     }
-    # },
+    {
+        "ts": "2020-11-15 12:08:17.288374",
+        "dataset": "FashionMNIST0.5",
+        "model": "resnet",
+        "params": {
+            "weight_decay": 0.12464281311099178
+        }
+    },
+    {
+        "ts": "2020-11-15 12:16:45.655240",
+        "dataset": "FashionMNIST0.6",
+        "model": "resnet",
+        "params": {
+            "weight_decay": 0.037675319281232855
+        }
+    },
+    {
+        "ts": "2020-11-15 12:23:19.295852",
+        "dataset": "CIFAR",
+        "model": "resnet",
+        "params": {
+            "weight_decay": 0.07762198967377022
+        }
+    },
+    {
+        "ts": "2020-11-15 12:31:43.131727",
+        "dataset": "FashionMNIST0.5",
+        "model": "efficientnet",
+        "params": {
+            "weight_decay": 0.00889616027423698
+        }
+    },
+    {
+        "ts": "2020-11-15 12:44:26.128956",
+        "dataset": "FashionMNIST0.6",
+        "model": "efficientnet",
+        "params": {
+            "weight_decay": 0.08887653387064004
+        }
+    },
+    {
+        "ts": "2020-11-15 12:55:25.431198",
+        "dataset": "CIFAR",
+        "model": "efficientnet",
+        "params": {
+            "weight_decay": 0.2979004112949729
+        }
+    },
     {
         "ts": "2020-11-09 21:27:04.339063",
         "dataset": "FashionMNIST0.5",
@@ -969,30 +1018,6 @@ PARAMS = [
             "early_stopping_round": 1
         }
     },
-    # {
-    #     "ts": "2020-11-09 21:30:08.050028",
-    #     "dataset": "FashionMNIST0.5",
-    #     "model": "logistic",
-    #     "params": {
-    #         "C": 0.000757356598665866,
-    #         "solver": "liblinear",
-    #         "multi_class": "ovr"
-    #     }
-    # },
-    # {
-    #     "ts": "2020-11-09 22:22:57.713244",
-    #     "dataset": "FashionMNIST0.6",
-    #     "model": "linear",
-    #     "params": {}
-    # },
-    # {
-    #     "ts": "2020-11-09 22:22:57.784873",
-    #     "dataset": "FashionMNIST0.6",
-    #     "model": "three_layer",
-    #     "params": {
-    #         "hidden_dim": 3
-    #     }
-    # },
     {
         "ts": "2020-11-09 22:22:57.958981",
         "dataset": "FashionMNIST0.6",
@@ -1015,28 +1040,6 @@ PARAMS = [
             "early_stopping_round": 1
         }
     },
-    # {
-    #     "ts": "2020-11-09 22:24:15.015987",
-    #     "dataset": "FashionMNIST0.6",
-    #     "model": "logistic",
-    #     "params": {
-    #         "C": 0.0005710289362229364,
-    #         "solver": "saga",
-    #         "multi_class": "auto"
-    #     }
-    # },
-    # {
-    #     'dataset': 'CIFAR',
-    #     'model': 'linear',
-    #     'params': {}
-    # },
-    # {
-    #     'dataset': 'CIFAR',
-    #     'model': 'three_layer',
-    #     "params": {
-    #         "hidden_dim": 3
-    #     }
-    # },
     {
         "ts": "2020-11-11 12:33:43.689590",
         "dataset": "CIFAR",
@@ -1059,16 +1062,36 @@ PARAMS = [
             "early_stopping_round": 1
         }
     },
-    # {
-    #     "ts": "2020-11-11 12:49:39.544802",
-    #     "dataset": "CIFAR",
-    #     "model": "logistic",
-    #     "params": {
-    #         "C": 3987250.7131022774,
-    #         "solver": "saga",
-    #         "multi_class": "ovr"
-    #     }
-    # },
+    {
+        "ts": "2020-11-09 21:30:08.050028",
+        "dataset": "FashionMNIST0.5",
+        "model": "logistic",
+        "params": {
+            "C": 0.000757356598665866,
+            "solver": "liblinear",
+            "multi_class": "ovr"
+        }
+    },
+    {
+        "ts": "2020-11-09 22:24:15.015987",
+        "dataset": "FashionMNIST0.6",
+        "model": "logistic",
+        "params": {
+            "C": 0.0005710289362229364,
+            "solver": "saga",
+            "multi_class": "auto"
+        }
+    },
+    {
+        "ts": "2020-11-11 12:49:39.544802",
+        "dataset": "CIFAR",
+        "model": "logistic",
+        "params": {
+            "C": 3987250.7131022774,
+            "solver": "saga",
+            "multi_class": "ovr"
+        }
+    },
 ]
 
 if __name__ == '__main__':
