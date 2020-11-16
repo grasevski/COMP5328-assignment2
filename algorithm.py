@@ -701,7 +701,7 @@ def linear(in_dim: Size, _: Params) -> nn.Module:
     return nn.Sequential(nn.Flatten(), nn.Linear(np.prod(in_dim), N_CLASS))
 
 
-def three_layer(in_dim: Size, _: Params) -> nn.Module:
+def threelayer(in_dim: Size, _: Params) -> nn.Module:
     """The simplest possible universal function approximator."""
     d = in_dim[-1]
     return nn.Sequential(nn.Flatten(), nn.Linear(np.prod(in_dim), d), nn.ReLU(), nn.Linear(d, d), nn.ReLU(), nn.Linear(d, N_CLASS))
@@ -783,7 +783,7 @@ def train() -> None:
         if isinstance(model, Forward):
             w.writerow({
                 'ts': str(datetime.datetime.now()),
-                'model': f'{cfg["model"]}_backward',
+                'model': f'{cfg["model"]}-backward',
                 **evaluate_batch(model.backward(), cfg)
             })
             sys.stdout.flush()
@@ -837,7 +837,7 @@ def main() -> None:
 MODEL = OrderedDict([
     ('lenet', Forward(lenet)),
     ('linear', Forward(linear)),
-    ('three_layer', Forward(three_layer)),
+    ('threelayer', Forward(threelayer)),
     ('resnet', Forward(resnet)),
     ('efficientnet', Forward(EfficientNetB0)),
     ('lgb', Lgbm),
@@ -887,19 +887,19 @@ TRAINING_CONFIG = [
     {
         "ts": "2020-11-15 12:01:34.037183",
         "dataset": "FashionMNIST0.5",
-        "model": "three_layer",
+        "model": "threelayer",
         "params": {}
     },
     {
         "ts": "2020-11-15 12:04:11.208725",
         "dataset": "FashionMNIST0.6",
-        "model": "three_layer",
+        "model": "threelayer",
         "params": {}
     },
     {
         "ts": "2020-11-15 12:06:31.965749",
         "dataset": "CIFAR",
-        "model": "three_layer",
+        "model": "threelayer",
         "params": {}
     },
     {

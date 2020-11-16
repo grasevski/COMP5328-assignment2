@@ -3,7 +3,18 @@
 \usepackage{hyperref}
 \usepackage{url}
 \usepackage{biblatex}
+\usepackage{amsmath}
+\usepackage{graphicx}
+\usepackage{algorithmic}
+\usepackage{algorithm}
+\usepackage{amsfonts}
+\usepackage{pgfplots}
+\usepackage{pgfplotstable}
+\pgfplotsset{compat = 1.17}
 \addbibresource{references.bib}
+\pgfplotstableread[col sep=comma]{../results/FashionMNIST0.5.csv}\resultsa
+\pgfplotstableread[col sep=comma]{../results/FashionMNIST0.6.csv}\resultsb
+\pgfplotstableread[col sep=comma]{../results/CIFAR.csv}\resultsc
 %\documentstyle[nips14submit_09,times,art10]{article} % For LaTeX 2.09
 
 
@@ -51,10 +62,157 @@ In methods, you should describe the details of the flip rate estimation methods,
 In experiments, you should introduce your experimental setup (e.g.,datasets, algorithms, evaluation metric, etc.). Then, you should show the experimental results, compare, and analyze your results. If possible, give your personal reflection or thoughts on these results.
 
 \subsection{Datasets}
+\subsubsection{Fashion MNIST 0.5}
+
+\subsubsection{Fashion MNIST 0.6}
+
+\subsubsection{CIFAR}
 
 \subsection{Algorithms}
+\subsubsection{LeNet-5}
+
+\subsubsection{ResNet-18}
+
+\subsubsection{LightGBM}
 
 \subsection{Evaluation metrics}
+\subsubsection{Top-1 Accuracy}
+\subsubsection{Relative Reconstruction Errors (RRE)}
+
+\subsection{Results}
+\subsubsection{Test accuracy using given transition matrices}
+\begin{tikzpicture}
+\begin{axis}[
+    title={FashionMNIST0.5 - given},
+    ybar, nodes near coords,
+    xlabel={Model},
+    xtick=data,
+    xticklabels from table={\resultsa}{model},
+    x tick label style={rotate=90,anchor=east},
+    ylabel={Top-1 Accuracy (\%)},
+]
+\addplot table[x expr=\coordindex, y expr=100*\thisrow{acc}]{\resultsa};
+\end{axis}
+\end{tikzpicture}
+
+\begin{tikzpicture}
+\begin{axis}[
+    title={FashionMNIST0.6 - given},
+    ybar, nodes near coords,
+    xlabel={Model},
+    xtick=data,
+    xticklabels from table={\resultsb}{model},
+    x tick label style={rotate=90,anchor=east},
+    ylabel={Top-1 Accuracy (\%)},
+]
+\addplot table[x expr=\coordindex, y expr=100*\thisrow{acc}]{\resultsb};
+\end{axis}
+\end{tikzpicture}
+
+\begin{tikzpicture}
+\begin{axis}[
+    title={CIFAR - given},
+    ybar, nodes near coords,
+    xlabel={Model},
+    xtick=data,
+    xticklabels from table={\resultsc}{model},
+    x tick label style={rotate=90,anchor=east},
+    ylabel={Top-1 Accuracy (\%)},
+]
+\addplot table[x expr=\coordindex, y expr=100*\thisrow{acc}]{\resultsc};
+\end{axis}
+\end{tikzpicture}
+
+
+\subsubsection{Test accuracy using estimated transition matrices}
+\begin{tikzpicture}
+\begin{axis}[
+    title={FashionMNIST0.5 - estimated},
+    ybar, nodes near coords,
+    xlabel={Model},
+    xtick=data,
+    xticklabels from table={\resultsa}{model},
+    x tick label style={rotate=90,anchor=east},
+    ylabel={Top-1 Accuracy (\%)},
+]
+\addplot table[x expr=\coordindex, y expr=100*\thisrow{acc_hat}]{\resultsa};
+\end{axis}
+\end{tikzpicture}
+
+\begin{tikzpicture}
+\begin{axis}[
+    title={FashionMNIST0.6 - estimated},
+    ybar, nodes near coords,
+    xlabel={Model},
+    xtick=data,
+    xticklabels from table={\resultsb}{model},
+    x tick label style={rotate=90,anchor=east},
+    ylabel={Top-1 Accuracy (\%)},
+]
+\addplot table[x expr=\coordindex, y expr=100*\thisrow{acc_hat}]{\resultsb};
+\end{axis}
+\end{tikzpicture}
+
+\begin{tikzpicture}
+\begin{axis}[
+    title={CIFAR - estimated},
+    ybar, nodes near coords,
+    xlabel={Model},
+    xtick=data,
+    xticklabels from table={\resultsc}{model},
+    x tick label style={rotate=90,anchor=east},
+    ylabel={Top-1 Accuracy (\%)},
+]
+\addplot table[x expr=\coordindex, y expr=100*\thisrow{acc_hat}]{\resultsc};
+\end{axis}
+\end{tikzpicture}
+
+
+\subsubsection{RRE of estimated transition matrices}
+\begin{tikzpicture}
+\begin{axis}[
+    title={FashionMNIST0.5 - RRE},
+    ybar, nodes near coords,
+    xlabel={Model},
+    xtick=data,
+    xticklabels from table={\resultsa}{model},
+    x tick label style={rotate=90,anchor=east},
+    ylabel={RRE},
+]
+\addplot table[x expr=\coordindex, y expr=100*\thisrow{T_hat_RRE}]{\resultsa};
+\end{axis}
+\end{tikzpicture}
+
+\begin{tikzpicture}
+\begin{axis}[
+    title={FashionMNIST0.6 - RRE},
+    ybar, nodes near coords,
+    xlabel={Model},
+    xtick=data,
+    xticklabels from table={\resultsb}{model},
+    x tick label style={rotate=90,anchor=east},
+    ylabel={RRE},
+]
+\addplot table[x expr=\coordindex, y expr=100*\thisrow{T_hat_RRE}]{\resultsb};
+\end{axis}
+\end{tikzpicture}
+
+\begin{tikzpicture}
+\begin{axis}[
+    title={CIFAR - RRE},
+    ybar, nodes near coords,
+    xlabel={Model},
+    xtick=data,
+    xticklabels from table={\resultsc}{model},
+    x tick label style={rotate=90,anchor=east},
+    ylabel={RRE},
+]
+\addplot table[x expr=\coordindex, y expr=100*\thisrow{T_hat_RRE}]{\resultsc};
+\end{axis}
+\end{tikzpicture}
+
+
+
 
 \subsection{Discussion}
 
@@ -67,10 +225,15 @@ In conclusion, you should summarize your methods, results, and your insights for
 \printbibliography\appendix
 
 \section{Running the code}
+The experiment code is contained in a single file \texttt{algorithm.py}, which can either be imported as a module or run as a standalone script.
+
 \begin{itemize}
-\item Dependencies: \texttt{pip install scikit-learn}
-\item Usage: \texttt{./code/algorithm/algorithm.py}
+\item Dependencies: \texttt{pip install jsonlines lightgbm optuna pytorch-lightning}
+\item Usage: \texttt{./code/algorithm/algorithm.py >results.csv 2>algorithm.log}
+\item Hyperparam tuning: \texttt{./code/algorithm/algorithm.py -t >tuning\_results.jsonl 2>tuning.log}
 \item Help: \texttt{./code/algorithm/algorithm.py -h}
 \end{itemize}
+
+The code can be configured (number of trials, gpu settings, batch size, etc) via hard-coded constants at the top of the file. At the bottom of the file, there is an additional \texttt{TRAINING\_CONFIG} constant which controls which (model, dataset) combinations to run in the evaluation. Entries can be rearranged and/or commented out if desired.
 
 \end{document}
