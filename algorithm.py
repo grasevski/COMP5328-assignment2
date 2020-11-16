@@ -64,8 +64,8 @@ TPU_PARAMS = {'accelerator': 'ddp', 'precision': PRECISION, 'tpu_cores': 8}
 
 # Top1 accuracy, transition matrix RRE.
 EVALUATION_METRICS = [
-    'acc_hat', 'acc', 'acc_val_hat', 'acc_val', 'acc_clean', 'T_hat_RRE',
-    'T_hat'
+    'acc-hat', 'acc', 'acc-val-hat', 'acc-val', 'acc-clean', 'T-hat-RRE',
+    'T-hat'
 ]
 
 # Datasets and corresponding transition matrices.
@@ -729,23 +729,23 @@ def evaluate(model, cfg: Dict[str, any]) -> Tuple[float, float]:
     Xtr, Str, Xtr_val, Str_val, T, Xts, Yts = load(cfg['dataset'])
     model.train(cfg['params'], Xtr, Str, Xtr_val, Str_val, T)
     ret = {}
-    ret['acc_val'] = top1_accuracy(model(Xtr_val, T), Str_val)
+    ret['acc-val'] = top1_accuracy(model(Xtr_val, T), Str_val)
     ret['acc'] = top1_accuracy(model(Xts, T, True), Yts)
     if isinstance(model, Forward):
         model.train(cfg['params'], Xtr, Str, Xtr_val, Str_val)
-    ret['T_hat'] = estimate_transition_matrix(model, Xtr)
+    ret['T-hat'] = estimate_transition_matrix(model, Xtr)
     if isinstance(model, Forward):
-        model.train(cfg['params'], Xtr, Str, Xtr_val, Str_val, ret['T_hat'],
+        model.train(cfg['params'], Xtr, Str, Xtr_val, Str_val, ret['T-hat'],
                     True)
-    ret['T_hat_RRE'] = np.linalg.norm(T - ret['T_hat']) / np.linalg.norm(T)
-    ret['acc_val_hat'] = top1_accuracy(model(Xtr_val, ret['T_hat']), Str_val)
-    ret['acc_hat'] = top1_accuracy(model(Xts, ret['T_hat'], True), Yts)
+    ret['T-hat-RRE'] = np.linalg.norm(T - ret['T-hat']) / np.linalg.norm(T)
+    ret['acc-val-hat'] = top1_accuracy(model(Xtr_val, ret['T-hat']), Str_val)
+    ret['acc-hat'] = top1_accuracy(model(Xts, ret['T-hat'], True), Yts)
     Xts_tr, Xts_ts, Yts_tr, Yts_ts = train_test_split(Xts,
                                                       Yts,
                                                       test_size=TEST_SIZE,
                                                       random_state=0)
     model.train(cfg['params'], Xts_tr, Yts_tr, Xts_ts, Yts_ts)
-    ret['acc_clean'] = top1_accuracy(model(Xts_ts), Yts_ts)
+    ret['acc-clean'] = top1_accuracy(model(Xts_ts), Yts_ts)
     return ret
 
 
@@ -758,7 +758,7 @@ def evaluate_batch(model, cfg: Dict[str, any]) -> Dict[str, any]:
         for k in EVALUATION_METRICS
     }
     x = {
-        f'{k}_std': np.std([r[k] for r in results], axis=0)
+        f'{k}-std': np.std([r[k] for r in results], axis=0)
         for k in EVALUATION_METRICS
     }
     return {'dataset': cfg['dataset'], **u, **x}
@@ -767,7 +767,7 @@ def evaluate_batch(model, cfg: Dict[str, any]) -> Dict[str, any]:
 def train() -> None:
     """Run training and output evaluation results in csv format."""
     headers = ['ts', 'dataset', 'model'] + EVALUATION_METRICS + [
-        f'{k}_std' for k in EVALUATION_METRICS
+        f'{k}-std' for k in EVALUATION_METRICS
     ]
     w = csv.DictWriter(sys.stdout, headers)
     w.writeheader()

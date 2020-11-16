@@ -135,7 +135,7 @@ In experiments, you should introduce your experimental setup (e.g.,datasets, alg
     x tick label style={rotate=90,anchor=east},
     ylabel={Top-1 Accuracy (\%)},
 ]
-\addplot table[x expr=\coordindex, y expr=100*\thisrow{acc_hat}]{\resultsa};
+\addplot table[x expr=\coordindex, y expr=100*\thisrow{acc-hat}]{\resultsa};
 \end{axis}
 \end{tikzpicture}
 
@@ -149,7 +149,7 @@ In experiments, you should introduce your experimental setup (e.g.,datasets, alg
     x tick label style={rotate=90,anchor=east},
     ylabel={Top-1 Accuracy (\%)},
 ]
-\addplot table[x expr=\coordindex, y expr=100*\thisrow{acc_hat}]{\resultsb};
+\addplot table[x expr=\coordindex, y expr=100*\thisrow{acc-hat}]{\resultsb};
 \end{axis}
 \end{tikzpicture}
 
@@ -163,7 +163,7 @@ In experiments, you should introduce your experimental setup (e.g.,datasets, alg
     x tick label style={rotate=90,anchor=east},
     ylabel={Top-1 Accuracy (\%)},
 ]
-\addplot table[x expr=\coordindex, y expr=100*\thisrow{acc_hat}]{\resultsc};
+\addplot table[x expr=\coordindex, y expr=100*\thisrow{acc-hat}]{\resultsc};
 \end{axis}
 \end{tikzpicture}
 
@@ -179,7 +179,7 @@ In experiments, you should introduce your experimental setup (e.g.,datasets, alg
     x tick label style={rotate=90,anchor=east},
     ylabel={RRE},
 ]
-\addplot table[x expr=\coordindex, y expr=100*\thisrow{T_hat_RRE}]{\resultsa};
+\addplot table[x expr=\coordindex, y expr=\thisrow{T-hat-RRE}]{\resultsa};
 \end{axis}
 \end{tikzpicture}
 
@@ -193,7 +193,7 @@ In experiments, you should introduce your experimental setup (e.g.,datasets, alg
     x tick label style={rotate=90,anchor=east},
     ylabel={RRE},
 ]
-\addplot table[x expr=\coordindex, y expr=100*\thisrow{T_hat_RRE}]{\resultsb};
+\addplot table[x expr=\coordindex, y expr=\thisrow{T-hat-RRE}]{\resultsb};
 \end{axis}
 \end{tikzpicture}
 
@@ -207,14 +207,42 @@ In experiments, you should introduce your experimental setup (e.g.,datasets, alg
     x tick label style={rotate=90,anchor=east},
     ylabel={RRE},
 ]
-\addplot table[x expr=\coordindex, y expr=100*\thisrow{T_hat_RRE}]{\resultsc};
+\addplot table[x expr=\coordindex, y expr=\thisrow{T-hat-RRE}]{\resultsc};
 \end{axis}
 \end{tikzpicture}
 
-
+\subsubsection{Estimated transition matrices}
 
 
 \subsection{Discussion}
+\pgfplotstabletypeset[
+    columns={model,acc,accestimated,rre},
+    columns/model/.style={string type,column name=Model},
+    columns/accgiven/.style={string type,column name={Acc\% (given)}},
+    columns/accestimated/.style={string type,column name={Acc\% (estimated)}},
+    columns/rre/.style={string type,column name={RRE}},
+    columns/acc/.style={multiply by=100},
+    create on use/accgiven/.style={
+        create col/assign/.code={
+            \edef\entry{\thisrow{acc}$\pm$\thisrow{acc-std}}
+            \pgfkeyslet{/pgfplots/table/create col/next content}\entry
+        }
+    },
+    create on use/accestimated/.style={
+        create col/assign/.code={
+            \edef\entry{\thisrow{acc-hat}$\pm$\thisrow{acc-hat-std}}
+            \pgfkeyslet{/pgfplots/table/create col/next content}\entry
+        }
+    },
+    create on use/rre/.style={
+        create col/assign/.code={
+            \edef\entry{\thisrow{T-hat-RRE}$\pm$\thisrow{T-hat-RRE-std}}
+            \pgfkeyslet{/pgfplots/table/create col/next content}\entry
+        }
+    },
+]{\resultsa}
+%\pgfplotstabletypeset{\resultsb}
+%\pgfplotstabletypeset{\resultsc}
 
 \section{Conclusion}
 In conclusion, you should summarize your methods, results, and your insights for the future work.
@@ -234,6 +262,6 @@ The experiment code is contained in a single file \texttt{algorithm.py}, which c
 \item Help: \texttt{./code/algorithm/algorithm.py -h}
 \end{itemize}
 
-The code can be configured (number of trials, gpu settings, batch size, etc) via hard-coded constants at the top of the file. At the bottom of the file, there is an additional \texttt{TRAINING\_CONFIG} constant which controls which (model, dataset) combinations to run in the evaluation. Entries can be rearranged and/or commented out if desired.
+The code can be configured (number of trials, GPU settings, batch size, etc) via hard-coded constants at the top of the file. At the bottom of the file, there is an additional \texttt{TRAINING\_CONFIG} constant which controls which (model, dataset) combinations to run in the evaluation. Entries can be rearranged and/or commented out if desired.
 
 \end{document}
