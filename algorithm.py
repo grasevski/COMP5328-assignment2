@@ -32,13 +32,13 @@ import pytorch_lightning as pl
 from pytorch_lightning.callbacks import EarlyStopping
 
 # Number of trials to run the experiment.
-N_TRIAL = 1
+N_TRIAL = 10
 
 # Neural net training batch size.
 BATCH_SIZE = 1024
 
 # Floating-point precision for non-CPU training.
-PRECISION = 16
+PRECISION = 32
 
 # Worker processes for data loading.
 NUM_WORKERS = 0
