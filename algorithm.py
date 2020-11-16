@@ -512,7 +512,7 @@ class LR:
                                    multi_class=multi_class,
                                    n_jobs=-1)
         model.fit(X, y)
-        return log_loss(model.predict_proba(X_val), y_val)
+        return log_loss(y_val, model.predict_proba(X_val))
 
 
 class NeuralNet:
