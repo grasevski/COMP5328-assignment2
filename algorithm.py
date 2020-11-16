@@ -497,7 +497,7 @@ class LR:
         """Hyperparam tuning using generic optuna integration."""
         study = optuna.create_study(direction='minimize')
         f = functools.partial(LR._objective, X, y, X_val, y_val)
-        study.optimize(f, n_trials=100, n_jobs=-1)
+        study.optimize(f, n_trials=100)
         return study.best_params
 
     @staticmethod
