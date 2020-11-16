@@ -38,7 +38,7 @@ N_TRIAL = 10
 BATCH_SIZE = 1024
 
 # Floating-point precision for non-CPU training.
-PRECISION = 32
+PRECISION = 16
 
 # Worker processes for data loading.
 NUM_WORKERS = 0
