@@ -693,7 +693,7 @@ class NeuralNetWrapper(pl.LightningModule):
 
     def validation_step(self, batch, batch_nb):
         """Early stopping based on validation loss."""
-        self.log('val_loss', training_step(batch, batch_nb))
+        self.log('val_loss', self.training_step(batch, batch_nb))
 
 
 def linear(in_dim: Size, _: Params) -> nn.Module:
