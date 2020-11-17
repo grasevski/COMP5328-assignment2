@@ -705,9 +705,7 @@ def linear(in_dim: Size, _: Params) -> nn.Module:
 def threelayer(in_dim: Size, _: Params) -> nn.Module:
     """The simplest possible universal function approximator."""
     d = in_dim[-1]
-    return nn.Sequential(nn.Flatten(), nn.Linear(np.prod(in_dim), d),
-                         nn.ReLU(), nn.Linear(d, d), nn.ReLU(),
-                         nn.Linear(d, N_CLASS))
+    return nn.Sequential(nn.Flatten(), nn.Linear(np.prod(in_dim), d), nn.ReLU(), nn.Linear(d, d), nn.ReLU(), nn.Linear(d, N_CLASS))
 
 
 def top1_accuracy(pred, y):
@@ -719,8 +717,7 @@ def estimate_transition_matrix(model, X: np.ndarray) -> np.ndarray:
     """Estimate anchor points to generate transition matrix."""
     p = model(X)
     ix = np.argsort(p, axis=0)[-10:]
-    return np.hstack(
-        [p[ix[:, i]].mean(axis=0)[np.newaxis].T for i in range(3)])
+    return np.hstack([p[ix[:, i]].mean(axis=0) for i in range(N_CLASS)])
 
 
 def make(model):
@@ -825,25 +822,18 @@ def tune() -> None:
 
 def get_headers(evaluation_metrics) -> List[str]:
     """CSV file headers."""
-    return ['ts', 'dataset', 'model'
-            ] + evaluation_metrics + [f'{k}-std' for k in evaluation_metrics]
+    return ['ts', 'dataset', 'model'] + evaluation_metrics + [f'{k}-std' for k in evaluation_metrics]
 
 
 def table(T: str) -> str:
     """Parse numpy ndarray and output latex matrix."""
-    body = '\\\\'.join([
-        ' & '.join([
-            '{:.4f}'.format(float(y))
-            for y in x.translate({ord(i): None
-                                  for i in '[]'}).split()
-        ]) for x in T.splitlines()
-    ])
+    body = '\\\\'.join([' & '.join(['{:.4f}'.format(float(y)) for y in x.translate({ord(i): None for i in '[]'}).split()]) for x in T.splitlines()])
     return f'$\\begin{{bmatrix}}{body}\\end{{bmatrix}}$'
 
 
 def latex() -> None:
     """Read in results csv and output latex."""
-    TABLE_START = '\\begin{table}\\begin{tabular}{ccc}Model&T&STD\\\\\\hline'
+    TABLE_START = '\\begin{table}[H]\\begin{tabular}{ccc}Model&T&STD\\\\\\hline'
     RESULTS = 'results'
     ROW = '{model} & {t} & {t_std}\\\\'
     headers = get_headers([m for m in EVALUATION_METRICS if m != 'T-hat'])
@@ -857,9 +847,7 @@ def latex() -> None:
             w = csv.DictWriter(f, headers)
             w.writeheader()
             for r in v:
-                row = ROW.format(model=r['model'],
-                                 t=table(r['T-hat']),
-                                 t_std=table(r['T-hat-std']))
+                row = ROW.format(model=r['model'], t=table(r['T-hat']), t_std=table(r['T-hat-std']))
                 print(row)
                 del r['T-hat']
                 del r['T-hat-std']
@@ -871,10 +859,7 @@ def main() -> None:
     """Run all training and evaluation."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('-t', '--tune', help=tune.__doc__, action='store_true')
-    parser.add_argument('-l',
-                        '--latex',
-                        help=latex.__doc__,
-                        action='store_true')
+    parser.add_argument('-l', '--latex', help=latex.__doc__, action='store_true')
     args = parser.parse_args()
     if args.tune:
         tune()
