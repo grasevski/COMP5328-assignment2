@@ -495,10 +495,10 @@ The experiment code is contained in a single file \texttt{algorithm.py}, which c
 
 \begin{itemize}
 \item Dependencies: \texttt{pip install jsonlines lightgbm optuna pytorch-lightning}
-\item Usage: \texttt{./code/algorithm/algorithm.py >results.csv 2>algorithm.log}
-\item Hyperparam tuning: \texttt{./code/algorithm/algorithm.py -t >tuning\_results.jsonl 2>tuning.log}
-\item Generate latex tables: \texttt{./code/algorithm/algorithm.py -l <results.csv}
-\item Help: \texttt{./code/algorithm/algorithm.py -h}
+\item Usage: \texttt{./algorithm/algorithm.py >results.csv 2>algorithm.log}
+\item Hyperparam tuning: \texttt{./algorithm/algorithm.py -t >tuning\_results.jsonl 2>tuning.log}
+\item Generate latex tables: \texttt{./algorithm/algorithm.py -l <results.csv}
+\item Help: \texttt{./algorithm/algorithm.py -h}
 \end{itemize}
 
 The code can be configured (number of trials, GPU settings, batch size, etc) via hard-coded constants at the top of the file. At the bottom of the file, there is an additional \texttt{TRAINING\_CONFIG} constant which controls which (model, dataset) combinations to run in the evaluation. Entries can be rearranged and/or commented out if desired.
