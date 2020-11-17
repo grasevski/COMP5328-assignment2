@@ -716,7 +716,8 @@ def top1_accuracy(pred, y):
 def estimate_transition_matrix(model, X: np.ndarray) -> np.ndarray:
     """Estimate anchor points to generate transition matrix."""
     p = model(X)
-    return np.hstack([p[i][np.newaxis].T for i in p.argmax(axis=0)])
+    ix = np.argsort(p, axis=0)[-10:]
+    return np.hstack([p[ix[:, i]].mean(axis=0) for i in range(N_CLASS)])
 
 
 def make(model):
