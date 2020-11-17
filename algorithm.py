@@ -8,6 +8,7 @@ import datetime
 import functools
 import itertools
 import os
+import pathlib
 import random
 import sys
 from typing import Callable, Dict, List, Optional, Tuple
@@ -766,10 +767,7 @@ def evaluate_batch(model, cfg: Dict[str, any]) -> Dict[str, any]:
 
 def train() -> None:
     """Run training and output evaluation results in csv format."""
-    headers = ['ts', 'dataset', 'model'] + EVALUATION_METRICS + [
-        f'{k}-std' for k in EVALUATION_METRICS
-    ]
-    w = csv.DictWriter(sys.stdout, headers)
+    w = csv.DictWriter(sys.stdout, get_headers(EVALUATION_METRICS))
     w.writeheader()
     sys.stdout.flush()
     for cfg in TRAINING_CONFIG:
@@ -821,15 +819,60 @@ def tune() -> None:
         })
 
 
+def get_headers(evaluation_metrics) -> List[str]:
+    """CSV file headers."""
+    return ['ts', 'dataset', 'model'] + evaluation_metrics + [f'{k}-std' for k in evaluation_metrics]
+
+
+def table(T: str) -> str:
+    """Parse numpy ndarray and output latex matrix."""
+    body = '\\\\'.join([' & '.join(['{:.4f}'.format(float(y)) for y in x.translate({ord(i): None for i in '[]'}).split()]) for x in T.splitlines()])
+    return f'$\\begin{{bmatrix}}{body}\\end{{bmatrix}}$'
+
+
+def latex() -> None:
+    """Read in results csv and output latex."""
+    TABLE_START = '\\begin{table}[H]\\begin{tabular}{ccc}Model&T&STD\\\\\\hline'
+    RESULTS = 'results'
+    ROW = '{model} & {t} & {t_std}\\\\'
+    headers = get_headers([m for m in EVALUATION_METRICS if m != 'T-hat'])
+    data = OrderedDict([(k, []) for k in DATA])
+    for r in csv.DictReader(sys.stdin):
+        data[r['dataset']].append(r)
+    pathlib.Path(RESULTS).mkdir(exist_ok=True)
+    for k, v in data.items():
+        with open(f'{RESULTS}/{k}.csv', 'w') as f:
+            print(TABLE_START)
+            w = csv.DictWriter(f, headers)
+            w.writeheader()
+            for r in v:
+                row = ROW.format(model=r['model'], t=table(r['T-hat']), t_std=table(r['T-hat-std']))
+                print(row)
+                del r['T-hat']
+                del r['T-hat-std']
+                w.writerow(r)
+            print(TABLE_END.format(dataset=k))
+
+
 def main() -> None:
     """Run all training and evaluation."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('-t', '--tune', help=tune.__doc__, action='store_true')
-    if parser.parse_args().tune:
+    parser.add_argument('-l', '--latex', help=latex.__doc__, action='store_true')
+    args = parser.parse_args()
+    if args.tune:
         tune()
-        return
-    train()
+    elif args.latex:
+        latex()
+    else:
+        train()
 
+
+# End of LaTex formatted table of transition matrices.
+TABLE_END = """\\end{{tabular}}\\caption{{
+  Estimated transition matrix mean and standard deviation on {dataset} dataset.
+  \\label{{tab:T-{dataset}}}
+}}\\end{{table}}"""
 
 # This defines the classification algorithms to evaluate.
 # Put your classifier in this map to have it run in the

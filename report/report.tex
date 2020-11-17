@@ -20,9 +20,13 @@
 
 \title{Assignment 2}
 \author{
-  John Hu (500395897, zehu4485)
+  John Hu (500395897, zehu4485)\\
+  Implemented classifiers\\
+  Wrote most of report
   \and
-  Nicholas Grasevski (500710654, ngra5777)
+  Nicholas Grasevski (500710654, ngra5777)\\
+  Implemented transition matrix estimation\\
+  Wrote experiment part of report
   \and
   Tutor: Yu Yao
 }
@@ -58,10 +62,59 @@ In related work, you are expected to review the main idea of related label noise
 \section{Methods}
 In methods, you should describe the details of the flip rate estimation methods, include objective function, theoretical foundations (if any), and optimization algorithms. You should also describe the details of your classification models, including the formulation of the cost functions, the theoretical foundations or views (if any) of the cost functions, and the optimization methods.
 
+\subsection{Label noise robust classification}
+\begin{table}
+\begin{tabular}{cccc}
+loss & correction & $\mathbb{E}_{\boldsymbol{x},\tilde{\boldsymbol{y}}}$ & Hessian of $\mathbb{E}_{\boldsymbol{x},\tilde{\boldsymbol{y}}}$ \\\hline
+$\ell$ & - & no guarantee & unchanged \\
+$\ell^\leftarrow$ & $T^{-1}\cdot$ & unbiased estimator of $\ell$ & unchanged \\
+$\ell^\rightarrow$ & $T\cdot$ & same minimizer of $\ell$ & no guarantee
+\end{tabular}
+\caption{Qualitative comparison of loss corrections. \label{tab:loss}}
+\end{table}
+
+\subsubsection{The backward correction procedure}
+\subsubsection{The forward correction procedure}
+
+\subsection{Transition matrix estimation}
+\begin{equation}
+\bar{\boldsymbol{x}}^i = \arg\max_{\boldsymbol{x}\in X^\prime} \hat{p}\left(\tilde{\boldsymbol{y}}=e^i|\boldsymbol{x}\right)
+\label{eq:x}
+\end{equation}
+
+\begin{equation}
+\hat{T}_{ij} = \hat{p}\left(\tilde{\boldsymbol{y}}=e^j|\bar{\boldsymbol{x}}^i\right)
+\label{eq:T}
+\end{equation}
+
+\subsection{The overall algorithm}
+\begin{algorithm}
+\begin{algorithmic}
+\REQUIRE the noisy training set $S$, any loss $\ell$
+\ENSURE $h\left(\cdot\right)$
+\IF {$T$ is unknown}
+  \STATE Train a classifier $\boldsymbol{h}\left(\boldsymbol{x}\right)$ on $S$ with loss $\ell$
+  \STATE Obtain an unlabeled sample $X^\prime$
+  \STATE Estimate $\hat{T}$ by Equations \eqref{eq:x}-\eqref{eq:T} on $X^\prime$
+\ENDIF
+\STATE Train the classifier $h\left(x\right)$ on $S$ with loss $\ell^\leftarrow$ or $\ell^\rightarrow$
+\end{algorithmic}
+\caption{Robust two-stage training \label{alg:training}}
+\end{algorithm}
+
 \section{Experiments}
 In experiments, you should introduce your experimental setup (e.g.,datasets, algorithms, evaluation metric, etc.). Then, you should show the experimental results, compare, and analyze your results. If possible, give your personal reflection or thoughts on these results.
 
 \subsection{Datasets}
+\begin{table}\begin{tabular}{ccccc} dataset & $n$ & $m$ & $\textup{shape}$ & $T$ \\\hline
+FashionMNIST0.5 & 18000 & 3000 & (28 x 28) & $\begin{bmatrix}0.5 & 0.2 & 0.3\\0.3 & 0.5 & 0.2\\0.2 & 0.3 & 0.5\end{bmatrix}$\\
+FashionMNIST0.6 & 18000 & 3000 & (28 x 28) & $\begin{bmatrix}0.4 & 0.3 & 0.3\\0.3 & 0.4 & 0.3\\0.3 & 0.3 & 0.4\end{bmatrix}$\\
+CIFAR & 15000 & 3000 & (32 x 32 x 3) & $I$
+\end{tabular}\caption{
+  Datasets used in experiment, where $n$ is the number of training and validation examples, $m$ is the number of test examples, $\textup{shape}$ is the image shape and $T$ is the given transition matrix. For CIFAR the transition matrix is unknown. We substitute the identity matrix (i.e. assume no noise) as a point of reference.
+  \label{tab:dataset}
+}\end{table}
+
 \subsubsection{Fashion MNIST 0.5}
 
 \subsubsection{Fashion MNIST 0.6}
@@ -69,20 +122,57 @@ In experiments, you should introduce your experimental setup (e.g.,datasets, alg
 \subsubsection{CIFAR}
 
 \subsection{Algorithms}
-\subsubsection{LeNet-5}
+\subsubsection{Neural Networks}
+\begin{table}\begin{tabular}{cc} param & value\\\hline
+optimizer & Adam\\
+learning rate & 0.001\\
+early stopping & validation loss\\
+patience & 3\\
+batch size & 1024\\
+precision & 16-bit\\
+hardware & AWS p3.2xlarge
+\end{tabular}\caption{Parameters used for neural network training. \label{tab:nn}}\end{table}
 
-\subsubsection{ResNet-18}
+\subsubsection{Black box classifiers}
+\begin{table}\begin{tabular}{ccccccc} dataset & $\lambda_{\ell_1}$ & $\lambda_{\ell_2}$ & $n$ & $f$ & $b$ & $h$\\\hline
+FashionMNIST0.5 & $10^{-4}$ & $10^{-4}$ & 9 & 95.20 & 94.78 & 1\\
+FashionMNIST0.6 & 0 & 0 & 3 & 80.00 & 90.54 & 3\\
+CIFAR & $10^{-5}$ & $10^{-2}$ & 8 & 100.00 & 97.15 & 3
+\end{tabular}\caption{
+  Hyperparameters used for LightGBM, where $\lambda_{\ell_1}$ is the $\ell_1$ regularization constant, $\lambda_{\ell_2}$ is the $\ell_2$ regularization constant, $n$ is number of leaves per tree, $f$ is feature fraction (\%), $b$ is bagging fraction (\%) and $h$ is bagging frequency.
+  \label{tab:lgb}
+}\end{table}
 
-\subsubsection{LightGBM}
+\begin{table}\begin{tabular}{cccc} dataset & $\lambda_{\ell_2}$ & solver & multiclass\\\hline
+FashionMNIST0.5 & $10^{-3}$ & liblinear & ovr\\
+FashionMNIST0.6 & $10^{-3}$ & saga & multinomial\\
+CIFAR & $10^6$ & saga & ovr
+\end{tabular}\caption{
+  Hyperparameters used for logistic regression, where $\lambda_{\ell_2}$ is the $\ell_2$ regularization constant.
+  \label{tab:lr}
+}\end{table}
 
 \subsection{Evaluation metrics}
 \subsubsection{Top-1 Accuracy}
+The performance of each classifier is evaluated with the top-1 accuracy metric, that is,
+
+\begin{equation}
+\textup{top-1 accuracy} = \frac{\textup{number of correctly classified examples}}{\textup{total number of test examples}}
+\end{equation}
+
 \subsubsection{Relative Reconstruction Errors (RRE)}
+In order to validate the effectiveness of the transition matrix estimation, we calculate the Relative Reconstruction Errors:
+
+\begin{equation}
+\textup{RRE} = \frac{\left\|T - \hat{T}\right\|_F}{\left\|T\right\|_F}
+\end{equation}
+
+where $T$ is the given transition matrix and $\hat{T}$ is the estimated transition matrix.
+
 
 \subsection{Results}
 \subsubsection{Test accuracy using given transition matrices}
-\begin{tikzpicture}
-\begin{axis}[
+\begin{figure}\begin{tikzpicture}\begin{axis}[
     title={FashionMNIST0.5 - given},
     ybar, nodes near coords,
     xlabel={Model},
@@ -90,13 +180,12 @@ In experiments, you should introduce your experimental setup (e.g.,datasets, alg
     xticklabels from table={\resultsa}{model},
     x tick label style={rotate=90,anchor=east},
     ylabel={Top-1 Accuracy (\%)},
-]
-\addplot table[x expr=\coordindex, y expr=100*\thisrow{acc}]{\resultsa};
-\end{axis}
-\end{tikzpicture}
+]\addplot table[x expr=\coordindex, y expr=100*\thisrow{acc}]{\resultsa};\end{axis}\end{tikzpicture}\caption{
+  Top-1 accuracy on the FashionMNIST0.5 test set using the given transition matrix.
+  \label{fig:acc-FashionMNIST0.5}
+}\end{figure}
 
-\begin{tikzpicture}
-\begin{axis}[
+\begin{figure}\begin{tikzpicture}\begin{axis}[
     title={FashionMNIST0.6 - given},
     ybar, nodes near coords,
     xlabel={Model},
@@ -104,13 +193,12 @@ In experiments, you should introduce your experimental setup (e.g.,datasets, alg
     xticklabels from table={\resultsb}{model},
     x tick label style={rotate=90,anchor=east},
     ylabel={Top-1 Accuracy (\%)},
-]
-\addplot table[x expr=\coordindex, y expr=100*\thisrow{acc}]{\resultsb};
-\end{axis}
-\end{tikzpicture}
+]\addplot table[x expr=\coordindex, y expr=100*\thisrow{acc}]{\resultsb};\end{axis}\end{tikzpicture}\caption{
+  Top-1 accuracy on the FashionMNIST0.6 test set using the given transition matrix.
+  \label{fig:acc-FashionMNIST0.6}
+}\end{figure}
 
-\begin{tikzpicture}
-\begin{axis}[
+\begin{figure}\begin{tikzpicture}\begin{axis}[
     title={CIFAR - given},
     ybar, nodes near coords,
     xlabel={Model},
@@ -118,15 +206,13 @@ In experiments, you should introduce your experimental setup (e.g.,datasets, alg
     xticklabels from table={\resultsc}{model},
     x tick label style={rotate=90,anchor=east},
     ylabel={Top-1 Accuracy (\%)},
-]
-\addplot table[x expr=\coordindex, y expr=100*\thisrow{acc}]{\resultsc};
-\end{axis}
-\end{tikzpicture}
-
+]\addplot table[x expr=\coordindex, y expr=100*\thisrow{acc}]{\resultsc};\end{axis}\end{tikzpicture}\caption{
+  Top-1 accuracy on the CIFAR test set using the given transition matrix.
+  \label{fig:acc-CIFAR}
+}\end{figure}
 
 \subsubsection{Test accuracy using estimated transition matrices}
-\begin{tikzpicture}
-\begin{axis}[
+\begin{figure}\begin{tikzpicture}\begin{axis}[
     title={FashionMNIST0.5 - estimated},
     ybar, nodes near coords,
     xlabel={Model},
@@ -134,13 +220,12 @@ In experiments, you should introduce your experimental setup (e.g.,datasets, alg
     xticklabels from table={\resultsa}{model},
     x tick label style={rotate=90,anchor=east},
     ylabel={Top-1 Accuracy (\%)},
-]
-\addplot table[x expr=\coordindex, y expr=100*\thisrow{acc-hat}]{\resultsa};
-\end{axis}
-\end{tikzpicture}
+]\addplot table[x expr=\coordindex, y expr=100*\thisrow{acc-hat}]{\resultsa};\end{axis}\end{tikzpicture}\caption{
+  Top-1 accuracy on the FashionMNIST0.5 test set using the estimated transition matrix.
+  \label{fig:acc-hat-FashionMNIST0.5}
+}\end{figure}
 
-\begin{tikzpicture}
-\begin{axis}[
+\begin{figure}\begin{tikzpicture}\begin{axis}[
     title={FashionMNIST0.6 - estimated},
     ybar, nodes near coords,
     xlabel={Model},
@@ -148,13 +233,12 @@ In experiments, you should introduce your experimental setup (e.g.,datasets, alg
     xticklabels from table={\resultsb}{model},
     x tick label style={rotate=90,anchor=east},
     ylabel={Top-1 Accuracy (\%)},
-]
-\addplot table[x expr=\coordindex, y expr=100*\thisrow{acc-hat}]{\resultsb};
-\end{axis}
-\end{tikzpicture}
+]\addplot table[x expr=\coordindex, y expr=100*\thisrow{acc-hat}]{\resultsb};\end{axis}\end{tikzpicture}\caption{
+  Top-1 accuracy on the FashionMNIST0.6 test set using the estimated transition matrix.
+  \label{fig:acc-hat-FashionMNIST0.6}
+}\end{figure}
 
-\begin{tikzpicture}
-\begin{axis}[
+\begin{figure}\begin{tikzpicture}\begin{axis}[
     title={CIFAR - estimated},
     ybar, nodes near coords,
     xlabel={Model},
@@ -162,15 +246,14 @@ In experiments, you should introduce your experimental setup (e.g.,datasets, alg
     xticklabels from table={\resultsc}{model},
     x tick label style={rotate=90,anchor=east},
     ylabel={Top-1 Accuracy (\%)},
-]
-\addplot table[x expr=\coordindex, y expr=100*\thisrow{acc-hat}]{\resultsc};
-\end{axis}
-\end{tikzpicture}
+]\addplot table[x expr=\coordindex, y expr=100*\thisrow{acc-hat}]{\resultsc};\end{axis}\end{tikzpicture}\caption{
+  Top-1 accuracy on the CIFAR test set using the estimated transition matrix.
+  \label{fig:acc-hat-FashionMNIST0.6}
+}\end{figure}
 
 
 \subsubsection{RRE of estimated transition matrices}
-\begin{tikzpicture}
-\begin{axis}[
+\begin{figure}\begin{tikzpicture}\begin{axis}[
     title={FashionMNIST0.5 - RRE},
     ybar, nodes near coords,
     xlabel={Model},
@@ -178,13 +261,12 @@ In experiments, you should introduce your experimental setup (e.g.,datasets, alg
     xticklabels from table={\resultsa}{model},
     x tick label style={rotate=90,anchor=east},
     ylabel={RRE},
-]
-\addplot table[x expr=\coordindex, y expr=\thisrow{T-hat-RRE}]{\resultsa};
-\end{axis}
-\end{tikzpicture}
+]\addplot table[x expr=\coordindex, y expr=\thisrow{T-hat-RRE}]{\resultsa};\end{axis}\end{tikzpicture}\caption{
+  Relative Reconstruction Errors on the FashionMNIST0.5 transition matrix.
+  \label{fig:T-hat-RRE-FashionMNIST0.5}
+}\end{figure}
 
-\begin{tikzpicture}
-\begin{axis}[
+\begin{figure}\begin{tikzpicture}\begin{axis}[
     title={FashionMNIST0.6 - RRE},
     ybar, nodes near coords,
     xlabel={Model},
@@ -192,13 +274,12 @@ In experiments, you should introduce your experimental setup (e.g.,datasets, alg
     xticklabels from table={\resultsb}{model},
     x tick label style={rotate=90,anchor=east},
     ylabel={RRE},
-]
-\addplot table[x expr=\coordindex, y expr=\thisrow{T-hat-RRE}]{\resultsb};
-\end{axis}
-\end{tikzpicture}
+]\addplot table[x expr=\coordindex, y expr=\thisrow{T-hat-RRE}]{\resultsb};\end{axis}\end{tikzpicture}\caption{
+  Relative Reconstruction Errors on the FashionMNIST0.6 transition matrix.
+  \label{fig:T-hat-RRE-FashionMNIST0.6}
+}\end{figure}
 
-\begin{tikzpicture}
-\begin{axis}[
+\begin{figure}\begin{tikzpicture}\begin{axis}[
     title={CIFAR - RRE},
     ybar, nodes near coords,
     xlabel={Model},
@@ -206,43 +287,108 @@ In experiments, you should introduce your experimental setup (e.g.,datasets, alg
     xticklabels from table={\resultsc}{model},
     x tick label style={rotate=90,anchor=east},
     ylabel={RRE},
-]
-\addplot table[x expr=\coordindex, y expr=\thisrow{T-hat-RRE}]{\resultsc};
-\end{axis}
-\end{tikzpicture}
+]\addplot table[x expr=\coordindex, y expr=\thisrow{T-hat-RRE}]{\resultsc};\end{axis}\end{tikzpicture}\caption{
+  Relative Reconstruction Errors on the CIFAR transition matrix.
+  \label{fig:T-hat-RRE-CIFAR}
+}\end{figure}
 
 \subsubsection{Estimated transition matrices}
+\begin{table}\begin{tabular}{ccc}Model&T&STD\\\hline
+lenet & $\begin{bmatrix}0.6088 & 0.1533 & 0.2544\\0.2667 & 0.5980 & 0.1733\\0.1246 & 0.2488 & 0.5723\end{bmatrix}$ & $\begin{bmatrix}0.0308 & 0.0153 & 0.0235\\0.0239 & 0.0425 & 0.0240\\0.0243 & 0.0328 & 0.0417\end{bmatrix}$\\
+lenet-backward & $\begin{bmatrix}0.6001 & 0.1512 & 0.2485\\0.2654 & 0.5968 & 0.1678\\0.1346 & 0.2520 & 0.5838\end{bmatrix}$ & $\begin{bmatrix}0.0183 & 0.0160 & 0.0203\\0.0213 & 0.0335 & 0.0239\\0.0156 & 0.0361 & 0.0393\end{bmatrix}$\\
+linear & $\begin{bmatrix}0.6861 & 0.1675 & 0.2229\\0.2084 & 0.7866 & 0.1491\\0.1055 & 0.0459 & 0.6280\end{bmatrix}$ & $\begin{bmatrix}0.0623 & 0.0277 & 0.0175\\0.0413 & 0.0300 & 0.0185\\0.0285 & 0.0040 & 0.0179\end{bmatrix}$\\
+linear-backward & $\begin{bmatrix}0.6771 & 0.1866 & 0.2346\\0.2040 & 0.7717 & 0.1493\\0.1189 & 0.0417 & 0.6160\end{bmatrix}$ & $\begin{bmatrix}0.0471 & 0.0321 & 0.0172\\0.0313 & 0.0366 & 0.0152\\0.0323 & 0.0088 & 0.0174\end{bmatrix}$\\
+threelayer & $\begin{bmatrix}0.6623 & 0.2270 & 0.2306\\0.2312 & 0.6642 & 0.1388\\0.1065 & 0.1088 & 0.6306\end{bmatrix}$ & $\begin{bmatrix}0.0646 & 0.0598 & 0.0466\\0.0525 & 0.0640 & 0.0245\\0.0221 & 0.0838 & 0.0573\end{bmatrix}$\\
+threelayer-backward & $\begin{bmatrix}0.6520 & 0.2012 & 0.2115\\0.2502 & 0.6631 & 0.1433\\0.0978 & 0.1357 & 0.6451\end{bmatrix}$ & $\begin{bmatrix}0.0590 & 0.0490 & 0.0416\\0.0423 & 0.0592 & 0.0261\\0.0266 & 0.0809 & 0.0573\end{bmatrix}$\\
+resnet & $\begin{bmatrix}0.6987 & 0.1469 & 0.2299\\0.1788 & 0.7097 & 0.1542\\0.1224 & 0.1433 & 0.6159\end{bmatrix}$ & $\begin{bmatrix}0.0410 & 0.0690 & 0.0343\\0.0376 & 0.1009 & 0.0325\\0.0318 & 0.0520 & 0.0357\end{bmatrix}$\\
+resnet-backward & $\begin{bmatrix}0.7232 & 0.1435 & 0.2060\\0.1645 & 0.6737 & 0.1280\\0.1123 & 0.1828 & 0.6660\end{bmatrix}$ & $\begin{bmatrix}0.0777 & 0.0451 & 0.0388\\0.0558 & 0.0514 & 0.0307\\0.0384 & 0.0229 & 0.0517\end{bmatrix}$\\
+efficientnet & $\begin{bmatrix}0.9885 & 0.0062 & 0.0210\\0.0078 & 0.9825 & 0.0260\\0.0037 & 0.0113 & 0.9530\end{bmatrix}$ & $\begin{bmatrix}0.0272 & 0.0139 & 0.0365\\0.0206 & 0.0470 & 0.0479\\0.0074 & 0.0335 & 0.0840\end{bmatrix}$\\
+efficientnet-backward & $\begin{bmatrix}0.9609 & 0.0304 & 0.0198\\0.0246 & 0.9357 & 0.0162\\0.0145 & 0.0338 & 0.9640\end{bmatrix}$ & $\begin{bmatrix}0.0657 & 0.0445 & 0.0404\\0.0434 & 0.0829 & 0.0270\\0.0228 & 0.0443 & 0.0627\end{bmatrix}$\\
+lgb & $\begin{bmatrix}0.6343 & 0.1457 & 0.1949\\0.2239 & 0.6608 & 0.1598\\0.1418 & 0.1935 & 0.6452\end{bmatrix}$ & $\begin{bmatrix}0.0000 & 0.0000 & 0.0000\\0.0000 & 0.0000 & 0.0000\\0.0000 & 0.0000 & 0.0000\end{bmatrix}$\\
+logistic & $\begin{bmatrix}0.9954 & 0.0014 & 0.0145\\0.0002 & 0.9965 & 0.0454\\0.0043 & 0.0020 & 0.9400\end{bmatrix}$ & $\begin{bmatrix}0.0000 & 0.0000 & 0.0000\\0.0000 & 0.0000 & 0.0000\\0.0000 & 0.0000 & 0.0000\end{bmatrix}$\\
+\end{tabular}\caption{
+  Estimated transition matrix mean and standard deviation on FashionMNIST0.5 dataset.
+  \label{tab:T-FashionMNIST0.5}
+}\end{table}
+\begin{table}\begin{tabular}{ccc}Model&T&STD\\\hline
+lenet & $\begin{bmatrix}0.5923 & 0.2982 & 0.2276\\0.2421 & 0.4525 & 0.2834\\0.1655 & 0.2494 & 0.4890\end{bmatrix}$ & $\begin{bmatrix}0.0334 & 0.0138 & 0.0192\\0.0118 & 0.0133 & 0.0125\\0.0237 & 0.0118 & 0.0119\end{bmatrix}$\\
+lenet-backward & $\begin{bmatrix}0.5515 & 0.2993 & 0.2365\\0.2541 & 0.4439 & 0.2823\\0.1944 & 0.2568 & 0.4812\end{bmatrix}$ & $\begin{bmatrix}0.0367 & 0.0123 & 0.0190\\0.0118 & 0.0164 & 0.0084\\0.0282 & 0.0131 & 0.0235\end{bmatrix}$\\
+linear & $\begin{bmatrix}0.7112 & 0.2676 & 0.2523\\0.1280 & 0.4910 & 0.2114\\0.1608 & 0.2413 & 0.5363\end{bmatrix}$ & $\begin{bmatrix}0.0486 & 0.0370 & 0.0157\\0.0174 & 0.0538 & 0.0200\\0.0349 & 0.0348 & 0.0229\end{bmatrix}$\\
+linear-backward & $\begin{bmatrix}0.7178 & 0.2942 & 0.2470\\0.1223 & 0.4765 & 0.2159\\0.1599 & 0.2293 & 0.5371\end{bmatrix}$ & $\begin{bmatrix}0.0492 & 0.0285 & 0.0322\\0.0201 & 0.0356 & 0.0318\\0.0336 & 0.0338 & 0.0223\end{bmatrix}$\\
+threelayer & $\begin{bmatrix}0.6308 & 0.2836 & 0.2554\\0.2033 & 0.4622 & 0.2556\\0.1659 & 0.2542 & 0.4891\end{bmatrix}$ & $\begin{bmatrix}0.0644 & 0.0171 & 0.0182\\0.0346 & 0.0386 & 0.0222\\0.0351 & 0.0315 & 0.0385\end{bmatrix}$\\
+threelayer-backward & $\begin{bmatrix}0.5952 & 0.2961 & 0.2566\\0.2212 & 0.4602 & 0.2654\\0.1836 & 0.2436 & 0.4781\end{bmatrix}$ & $\begin{bmatrix}0.0571 & 0.0140 & 0.0101\\0.0312 & 0.0243 & 0.0093\\0.0296 & 0.0285 & 0.0146\end{bmatrix}$\\
+resnet & $\begin{bmatrix}0.6556 & 0.2749 & 0.1997\\0.1837 & 0.5254 & 0.1958\\0.1608 & 0.1997 & 0.6045\end{bmatrix}$ & $\begin{bmatrix}0.0841 & 0.0455 & 0.0501\\0.0525 & 0.0622 & 0.0456\\0.0557 & 0.0527 & 0.0718\end{bmatrix}$\\
+resnet-backward & $\begin{bmatrix}0.6291 & 0.3154 & 0.2559\\0.1868 & 0.4611 & 0.2295\\0.1842 & 0.2235 & 0.5146\end{bmatrix}$ & $\begin{bmatrix}0.0942 & 0.0468 & 0.0330\\0.0464 & 0.0548 & 0.0184\\0.0506 & 0.0412 & 0.0387\end{bmatrix}$\\
+efficientnet & $\begin{bmatrix}0.9654 & 0.0321 & 0.0209\\0.0158 & 0.9413 & 0.0184\\0.0188 & 0.0266 & 0.9607\end{bmatrix}$ & $\begin{bmatrix}0.0531 & 0.0668 & 0.0378\\0.0258 & 0.0941 & 0.0256\\0.0285 & 0.0392 & 0.0622\end{bmatrix}$\\
+efficientnet-backward & $\begin{bmatrix}0.9950 & 0.0087 & 0.0039\\0.0016 & 0.9775 & 0.0026\\0.0035 & 0.0138 & 0.9935\end{bmatrix}$ & $\begin{bmatrix}0.0105 & 0.0135 & 0.0116\\0.0044 & 0.0359 & 0.0076\\0.0064 & 0.0226 & 0.0192\end{bmatrix}$\\
+lgb & $\begin{bmatrix}0.4306 & 0.2876 & 0.2921\\0.2879 & 0.4202 & 0.2865\\0.2815 & 0.2921 & 0.4214\end{bmatrix}$ & $\begin{bmatrix}0.0000 & 0.0000 & 0.0000\\0.0000 & 0.0000 & 0.0000\\0.0000 & 0.0000 & 0.0000\end{bmatrix}$\\
+logistic & $\begin{bmatrix}0.9525 & 0.0587 & 0.0322\\0.0127 & 0.9136 & 0.0173\\0.0348 & 0.0277 & 0.9505\end{bmatrix}$ & $\begin{bmatrix}0.0004 & 0.0002 & 0.0004\\0.0001 & 0.0003 & 0.0002\\0.0003 & 0.0001 & 0.0006\end{bmatrix}$\\
+\end{tabular}\caption{
+  Estimated transition matrix mean and standard deviation on FashionMNIST0.6 dataset.
+  \label{tab:T-FashionMNIST0.6}
+}\end{table}
+\begin{table}\begin{tabular}{ccc}Model&T&STD\\\hline
+lenet & $\begin{bmatrix}0.4388 & 0.2145 & 0.2343\\0.2931 & 0.5167 & 0.2615\\0.2681 & 0.2688 & 0.5042\end{bmatrix}$ & $\begin{bmatrix}0.0270 & 0.0346 & 0.0469\\0.0270 & 0.0271 & 0.0322\\0.0186 & 0.0229 & 0.0387\end{bmatrix}$\\
+lenet-backward & $\begin{bmatrix}0.4409 & 0.1942 & 0.2434\\0.2814 & 0.5338 & 0.2652\\0.2777 & 0.2721 & 0.4915\end{bmatrix}$ & $\begin{bmatrix}0.0370 & 0.0504 & 0.0350\\0.0398 & 0.0276 & 0.0358\\0.0410 & 0.0392 & 0.0274\end{bmatrix}$\\
+linear & $\begin{bmatrix}0.4999 & 0.2329 & 0.2158\\0.2918 & 0.5095 & 0.2318\\0.2083 & 0.2576 & 0.5524\end{bmatrix}$ & $\begin{bmatrix}0.0314 & 0.0201 & 0.0308\\0.0309 & 0.0232 & 0.0291\\0.0522 & 0.0236 & 0.0207\end{bmatrix}$\\
+linear-backward & $\begin{bmatrix}0.5069 & 0.2471 & 0.2275\\0.2796 & 0.5060 & 0.2205\\0.2135 & 0.2469 & 0.5520\end{bmatrix}$ & $\begin{bmatrix}0.0268 & 0.0109 & 0.0184\\0.0377 & 0.0264 & 0.0201\\0.0473 & 0.0222 & 0.0161\end{bmatrix}$\\
+threelayer & $\begin{bmatrix}0.4551 & 0.2554 & 0.2071\\0.3149 & 0.4607 & 0.2727\\0.2300 & 0.2839 & 0.5202\end{bmatrix}$ & $\begin{bmatrix}0.0395 & 0.0322 & 0.0446\\0.0438 & 0.0267 & 0.0422\\0.0644 & 0.0278 & 0.0652\end{bmatrix}$\\
+threelayer-backward & $\begin{bmatrix}0.4445 & 0.2898 & 0.2353\\0.3390 & 0.4376 & 0.2465\\0.2165 & 0.2726 & 0.5182\end{bmatrix}$ & $\begin{bmatrix}0.0290 & 0.0300 & 0.0274\\0.0419 & 0.0249 & 0.0222\\0.0468 & 0.0291 & 0.0334\end{bmatrix}$\\
+resnet & $\begin{bmatrix}0.6655 & 0.1463 & 0.1525\\0.1346 & 0.6494 & 0.1502\\0.1999 & 0.2043 & 0.6973\end{bmatrix}$ & $\begin{bmatrix}0.1765 & 0.0831 & 0.0961\\0.0993 & 0.1189 & 0.1023\\0.1176 & 0.0980 & 0.1404\end{bmatrix}$\\
+resnet-backward & $\begin{bmatrix}0.7334 & 0.1632 & 0.1519\\0.1153 & 0.6529 & 0.1157\\0.1513 & 0.1839 & 0.7324\end{bmatrix}$ & $\begin{bmatrix}0.1893 & 0.0826 & 0.0895\\0.1101 & 0.1726 & 0.1002\\0.0915 & 0.1061 & 0.1696\end{bmatrix}$\\
+efficientnet & $\begin{bmatrix}0.8577 & 0.0930 & 0.0811\\0.0532 & 0.8075 & 0.0670\\0.0891 & 0.0995 & 0.8520\end{bmatrix}$ & $\begin{bmatrix}0.2459 & 0.1280 & 0.1299\\0.0949 & 0.2710 & 0.1100\\0.1530 & 0.1520 & 0.2227\end{bmatrix}$\\
+efficientnet-backward & $\begin{bmatrix}0.6847 & 0.1709 & 0.1268\\0.1309 & 0.6172 & 0.1426\\0.1844 & 0.2119 & 0.7305\end{bmatrix}$ & $\begin{bmatrix}0.2765 & 0.1482 & 0.1270\\0.1126 & 0.3184 & 0.1558\\0.1788 & 0.1816 & 0.2600\end{bmatrix}$\\
+lgb & $\begin{bmatrix}0.4649 & 0.2344 & 0.2378\\0.2924 & 0.5035 & 0.2666\\0.2427 & 0.2621 & 0.4956\end{bmatrix}$ & $\begin{bmatrix}0.0000 & 0.0000 & 0.0000\\0.0000 & 0.0000 & 0.0000\\0.0000 & 0.0000 & 0.0000\end{bmatrix}$\\
+logistic & $\begin{bmatrix}0.7887 & 0.1280 & 0.1201\\0.1641 & 0.7512 & 0.1001\\0.0472 & 0.1209 & 0.7798\end{bmatrix}$ & $\begin{bmatrix}0.0005 & 0.0120 & 0.0005\\0.0005 & 0.0004 & 0.0006\\0.0002 & 0.0119 & 0.0005\end{bmatrix}$\\
+\end{tabular}\caption{
+  Estimated transition matrix mean and standard deviation on CIFAR dataset.
+  \label{tab:T-CIFAR}
+}\end{table}
 
 
 \subsection{Discussion}
-\pgfplotstabletypeset[
-    columns={model,acc,accestimated,rre},
+\begin{table}\pgfplotstabletypeset[
+    columns={model,acc,acc-std,acc-hat,acc-hat-std,T-hat-RRE,T-hat-RRE-std},
     columns/model/.style={string type,column name=Model},
-    columns/accgiven/.style={string type,column name={Acc\% (given)}},
-    columns/accestimated/.style={string type,column name={Acc\% (estimated)}},
-    columns/rre/.style={string type,column name={RRE}},
-    columns/acc/.style={multiply by=100},
-    create on use/accgiven/.style={
-        create col/assign/.code={
-            \edef\entry{\thisrow{acc}$\pm$\thisrow{acc-std}}
-            \pgfkeyslet{/pgfplots/table/create col/next content}\entry
-        }
-    },
-    create on use/accestimated/.style={
-        create col/assign/.code={
-            \edef\entry{\thisrow{acc-hat}$\pm$\thisrow{acc-hat-std}}
-            \pgfkeyslet{/pgfplots/table/create col/next content}\entry
-        }
-    },
-    create on use/rre/.style={
-        create col/assign/.code={
-            \edef\entry{\thisrow{T-hat-RRE}$\pm$\thisrow{T-hat-RRE-std}}
-            \pgfkeyslet{/pgfplots/table/create col/next content}\entry
-        }
-    },
-]{\resultsa}
-%\pgfplotstabletypeset{\resultsb}
-%\pgfplotstabletypeset{\resultsc}
+    columns/acc/.style={multiply by=100,column name={Acc\% given}},
+    columns/acc-std/.style={multiply by=100,column name={STD}},
+    columns/acc-hat/.style={multiply by=100,column name={Acc\% estimated}},
+    columns/acc-hat-std/.style={multiply by=100,column name={STD}},
+    columns/T-hat-RRE/.style={column name={RRE}},
+    columns/T-hat-RRE-std/.style={column name={STD}},
+    every head row/.style={after row=\hline},
+]{\resultsa}\caption{
+  FashionMNIST0.5 top-1 accuracy mean and standard deviation on given and estimated transition matrices respectively, and estimated transition matrix Relative Reconstruction Errors (RRE).
+  \label{tab:FashionMNIST0.5}
+}\end{table}
+\begin{table}\pgfplotstabletypeset[
+    columns={model,acc,acc-std,acc-hat,acc-hat-std,T-hat-RRE,T-hat-RRE-std},
+    columns/model/.style={string type,column name=Model},
+    columns/acc/.style={multiply by=100,column name={Acc\% given}},
+    columns/acc-std/.style={multiply by=100,column name={STD}},
+    columns/acc-hat/.style={multiply by=100,column name={Acc\% estimated}},
+    columns/acc-hat-std/.style={multiply by=100,column name={STD}},
+    columns/T-hat-RRE/.style={column name={RRE}},
+    columns/T-hat-RRE-std/.style={column name={STD}},
+    every head row/.style={after row=\hline},
+]{\resultsb}\caption{
+  FashionMNIST0.6 top-1 accuracy mean and standard deviation on given and estimated transition matrices respectively, and estimated transition matrix Relative Reconstruction Errors (RRE).
+  \label{tab:FashionMNIST0.6}
+}\end{table}
+\begin{table}\pgfplotstabletypeset[
+    columns={model,acc,acc-std,acc-hat,acc-hat-std,T-hat-RRE,T-hat-RRE-std},
+    columns/model/.style={string type,column name=Model},
+    columns/acc/.style={multiply by=100,column name={Acc\% given}},
+    columns/acc-std/.style={multiply by=100,column name={STD}},
+    columns/acc-hat/.style={multiply by=100,column name={Acc\% estimated}},
+    columns/acc-hat-std/.style={multiply by=100,column name={STD}},
+    columns/T-hat-RRE/.style={column name={RRE}},
+    columns/T-hat-RRE-std/.style={column name={STD}},
+    every head row/.style={after row=\hline},
+]{\resultsc}\caption{
+  CIFAR top-1 accuracy mean and standard deviation on given and estimated transition matrices respectively, and estimated transition matrix Relative Reconstruction Errors (RRE).
+  \label{tab:CIFAR}
+}\end{table}
 
 \section{Conclusion}
 In conclusion, you should summarize your methods, results, and your insights for the future work.
@@ -259,6 +405,7 @@ The experiment code is contained in a single file \texttt{algorithm.py}, which c
 \item Dependencies: \texttt{pip install jsonlines lightgbm optuna pytorch-lightning}
 \item Usage: \texttt{./code/algorithm/algorithm.py >results.csv 2>algorithm.log}
 \item Hyperparam tuning: \texttt{./code/algorithm/algorithm.py -t >tuning\_results.jsonl 2>tuning.log}
+\item Generate latex tables: \texttt{./code/algorithm/algorithm.py -l <results.csv}
 \item Help: \texttt{./code/algorithm/algorithm.py -h}
 \end{itemize}
 
