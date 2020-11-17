@@ -11,6 +11,7 @@
 \usepackage{pgfplots}
 \usepackage{pgfplotstable}
 \pgfplotsset{compat = 1.17}
+\graphicspath{{../figures/}}
 \addbibresource{references.bib}
 \pgfplotstableread[col sep=comma]{../results/FashionMNIST0.5.csv}\resultsa
 \pgfplotstableread[col sep=comma]{../results/FashionMNIST0.6.csv}\resultsb
@@ -46,23 +47,82 @@
 \maketitle
 
 \begin{abstract}
-The abstract paragraph should be indented 1/2~inch (3~picas) on both left and
-right-hand margins. Use 10~point type, with a vertical spacing of 11~points.
-The word \textbf{Abstract} must be centered, bold, and in point size 12. Two
-line spaces precede the abstract. The abstract must be limited to one
-paragraph.
+In this report we explore the effectiveness of robust techniques on noisy labeled datasets. Using a transition matrix that is estimated by anchor points we can improve the accuracy of a wide range of classifiers. The classifiers tested includes neural networks (ResNet, EfficientNet and LeNet) and black box classifiers (Logistic Regression and LightGBM). All classifiers are implemented on Fashion MINIST 0.5, Fashion MINIST 0.6 and CIFAR datasets. The neural networks perform well on more complex CIFAR dataset with LeNet having the highest accuracy. The black box classifiers are able to achieve similar accuracy in simpler datasets, however accuracies are poor on the CIFAR dataset.
 \end{abstract}
 
 \section{Introduction}
-In introduction, you should first introduce the problem of learning with label noise, and then its significance and applications. You should give an overview of the methods you want to use.
+The rapid advancement of technology provides us with access to huge amount of data. However not all the data are clean and useable, some of them contain undesired noise which will undermine the accuracy of a classifier. In this report we explore the usage of estimating transition matrix to reduce or even eliminate label noise, hence improve the performance of classifier. Classifiers that will be used and compared are LightGBM, (multinomial) logistic regression, ResNet, EfficientNet, LeNet, and additionally some basic 1-layer and 3-layer neural networks.
 
 \section{Related work}
-In related work, you are expected to review the main idea of related label noise methods (including their advantages and disadvantages).
+There are two main elements to the label denoising approach taken in this report: the underlying classification models, and the noise estimation technique. For the purposes of this report, we have divided classifiers into two categories: "traditional" or black box classifiers (including tree-based models, regression models, et cetera) and neural networks.
+
+\subsection{Black box classifiers}
+Classical supervised machine learning classification techniques include tree-based models, SVM, gaussian process regression and other generalized regression models. In this report we explore two of the most widely used of these techniques - gradient boosted decision trees, and logistic regression.
+
+\subsubsection{LightGBM}
+Compared to other decision tree algorithms, LightGBM excels at execution speed whilst maintaining a high level of accuracy. Unlike XGBoost or other decision tree algorithms which consider all features, LightGBM only considers the features with larger gradient, in another word more important features. It is done by utilising the Gradient-based one-side sampling to estimate information gain. In Ke’s paper, it is proven to be performing 20 times faster whilst achieving the same level of accuracy, however LightGBM usually relies on large datasets to achieve this. \cite{Dummy:6}
+
+\subsubsection{Logistic regression}
+Logistic regression is a generalized linear model that applies a sigmoid transform (or softmax in the case of multiclass) to the output prediction. \cite{lr} It is a simple low variance algorithm with few hyperparameters which can typically be trained in a short time compared to a typical neural network, making it a good candidate as a baseline for comparison against more complex classifiers. In fact, it is equivalent to a one-layer neural network.
+
+\subsection{Neural networks}
+Neural networks generalize classical regression techniques by incorporating ensembling techniques such as stacking, bagging and boosting as well as kernel tricks and regularization in a generic framework. Whereas logistic regression can only learn linear decision boundaries, neural networks are universal function approximators, allowing them to learn arbitrarily complex mathematical functions. \cite{nn}
+
+\subsubsection{ResNet}
+ResNet is brought to popularity by a paper published by Microsoft. ResNet tackles the problem of deep convolutional network that increase number of layers does not improve the accuracy of the image recognition. \cite{Dummy:3} ResNet uses the residual learning and identity mapping to achieve higher level of accuracy while adding more layers. First the residual learning, i.e.:
+
+\begin{equation}
+F\left ( x \right ) = H\left ( x \right ) - x
+\end{equation}
+
+where $F\left ( x \right)$ is the residual function $ H\left ( x \right )$ is the mapping of stacked layers, and $x$ is the input.
+
+\begin{figure}
+\includegraphics[width=0.5\linewidth]{ResNet}
+\caption{ResNet structure compares to CNN and VGG structure \label{fig:resnet}}
+\end{figure}
+
+If the identity mapping can use the residual function to construct the next added layers, it means that the training loss will be less or equal to the previous shallower network. Hence if the next added layers can not be constructed by identity mapping, they will be skipped as the extra layers will not decrease the training loss. Figure \ref{fig:resnet} from the original paper clearly demonstrates the concepts \cite{Dummy:5}.
+
+\subsubsection{EfficientNet}
+\begin{figure}
+\includegraphics[width=\linewidth]{EffiNet}
+\caption{EfficientNet structure compares to CNN and VGG structure \label{fig:efficientnet}}
+\end{figure}
+
+One of the latest neural network designed to improve accuracy by compound model scaling on a baseline model, i.e. finding the optimal width, depth and resolution of a network. Width refers to the number of filters in a conv layer, and depth refers to number of layers and resolution of image input \cite{Dummy:4} as is shown in figure \ref{fig:efficientnet}.
+
+The paper found that scaling up any of the three would lead to better accuracy, however a complex model would receive diminishing benefit from further scaling, and balance of three dimensions is critical for finding the optimal structure that delivers better accuracy.
+
+\subsubsection{LeNet}
+\begin{figure}
+\includegraphics[width=\linewidth]{LeNet}
+\caption{LeNet structure compares to CNN and VGG structure \label{fig:lenet}}
+\end{figure}
+
+Compared to other Networks, LeNet is rather straightforward. Through utilising a few convolution and subsampling layers as shown in figure 3, it can generate reasonable accuracy with a small dataset. In LeCun et al’s paper 60000 samples are used compared to ResNet of 1.28m samples. \cite{Dummy:7} The architecture is shown in figure \ref{fig:lenet}.
+
+\subsection{Noise Transition Matrix}
+Noise transition matrix is a novel solution to improve the accuracy of the classifier on a dataset with noisy label, i.e. incorrect label. The transition matrix is estimated through a set of (estimated) anchor points. Anchor points will have a probability close to one for one class, and close to zero for other classes. With the help of anchor points we can calculate the transition matrix as follows: \cite{Dummy:8}
+\begin{equation}
+P\left ( \tilde{Y} = j |\, X = x\right ) = \sum_{C}^{k=1}\, T_kj\, P\left ( Y = j |\, X = x\right ) = T_ij
+\end{equation}
+
+The two procedures can be used to reduce noise, with backward method being:
+\begin{equation}
+\left [ P\left ( Y = j |\, X\right ),...,P\left ( Y = C |\, X\right ) \right]^{T} = T^{-1}\,\left [ P\left ( \tilde{Y} = j |\, X\right ),...,P\left ( \tilde{Y} = C |\, X\right ) \right]^{T}
+\end{equation}
+
+The forward method estimates clean classification using:
+\begin{equation}
+\left [ P\left ( \tilde{Y} = j |\, X\right ),...,P\left ( \tilde{Y} = C |\, X\right ) \right]^{T} = T\,\left [ P\left ( Y = j |\, X\right ),...,P\left ( Y = C |\, X\right ) \right]^{T}
+\end{equation}
+
 
 \section{Methods}
-In methods, you should describe the details of the flip rate estimation methods, include objective function, theoretical foundations (if any), and optimization algorithms. You should also describe the details of your classification models, including the formulation of the cost functions, the theoretical foundations or views (if any) of the cost functions, and the optimization methods.
-
 \subsection{Label noise robust classification}
+The noise transition matrix is implemented through both forward and backward methods. As well as using the transition matrix and anchor points, we implemented the loss correction approach demonstrated in Patrini et al's paper in our forward and backward procedure to enhance the performance of label noise reduction, as it agrees with the Noise Transition Matrix and Anchor point theory introduced in related work. Table \ref{tab:loss} shows the impact of forward loss and backward loss correction.
+
 \begin{table}
 \begin{tabular}{cccc}
 loss & correction & $\mathbb{E}_{\boldsymbol{x},\tilde{\boldsymbol{y}}}$ & Hessian of $\mathbb{E}_{\boldsymbol{x},\tilde{\boldsymbol{y}}}$ \\\hline
@@ -74,9 +134,14 @@ $\ell^\rightarrow$ & $T\cdot$ & same minimizer of $\ell$ & no guarantee
 \end{table}
 
 \subsubsection{The backward correction procedure}
+The classification for noisy data is calculated, the anchor points and hence the transition matrix can be estimated based upon the classifier result. The backward method estimates the clean data by the product of the inverse of transition matrix and transposed posterior probability.
+
 \subsubsection{The forward correction procedure}
+Forward method is implemented by first classifying the noisy data without noise reduction, by doing so we can estimate our anchor points, hence using the anchor points to estimate thee transition matrix. The probability of the clean data classification is estimated through maximizing the product of T and transposed posterior probability of the noisy data.
 
 \subsection{Transition matrix estimation}
+We can estimate each component of matrix $T$ just based on noisy class probability estimates. In particular, let $X^\prime$ be any set of feature vectors. This can be the training set itself, but not necessarily: we do not require this sample to have any label at all and therefore any unlabeled sample from the same distributions can be used as well. We can approximate $T$ with two steps: \cite{labelnoise}
+
 \begin{equation}
 \bar{\boldsymbol{x}}^i = \arg\max_{\boldsymbol{x}\in X^\prime} \hat{p}\left(\tilde{\boldsymbol{y}}=e^i|\boldsymbol{x}\right)
 \label{eq:x}
@@ -88,6 +153,8 @@ $\ell^\rightarrow$ & $T\cdot$ & same minimizer of $\ell$ & no guarantee
 \end{equation}
 
 \subsection{The overall algorithm}
+Algorithm \ref{alg:training} shows how the forward and backward methods are implemented.
+
 \begin{algorithm}
 \begin{algorithmic}
 \REQUIRE the noisy training set $S$, any loss $\ell$
@@ -103,9 +170,9 @@ $\ell^\rightarrow$ & $T\cdot$ & same minimizer of $\ell$ & no guarantee
 \end{algorithm}
 
 \section{Experiments}
-In experiments, you should introduce your experimental setup (e.g.,datasets, algorithms, evaluation metric, etc.). Then, you should show the experimental results, compare, and analyze your results. If possible, give your personal reflection or thoughts on these results.
-
 \subsection{Datasets}
+Three datasets were used in this experiment, each of which has 3 classes. For each dataset, the training and validation data contains label noise, whereas the test data is clean. Each dataset is scaled from the range $\left[0,255\right]$ to the range $\left[0,1\right]$, in order to improve the convergence and numerical stability. No other preprocessing is done, it is left to the algorithm in question to handle the feature engineering automatically. The experiment is performed 10 times with the training data separated into a random 80-20 train-validate split each time. The mean and standard deviation for each model across all trials is recorded. Table \ref{tab:dataset} provides the details of each dataset.
+
 \begin{table}\begin{tabular}{ccccc} dataset & $n$ & $m$ & $\textup{shape}$ & $T$ \\\hline
 FashionMNIST0.5 & 18000 & 3000 & (28 x 28) & $\begin{bmatrix}0.5 & 0.2 & 0.3\\0.3 & 0.5 & 0.2\\0.2 & 0.3 & 0.5\end{bmatrix}$\\
 FashionMNIST0.6 & 18000 & 3000 & (28 x 28) & $\begin{bmatrix}0.4 & 0.3 & 0.3\\0.3 & 0.4 & 0.3\\0.3 & 0.3 & 0.4\end{bmatrix}$\\
@@ -116,13 +183,18 @@ CIFAR & 15000 & 3000 & (32 x 32 x 3) & $I$
 }\end{table}
 
 \subsubsection{Fashion MNIST 0.5}
+FashionMNIST0.5 is a subset of the grayscale Fashion MNIST dataset originally based off the MNIST dataset of handwritten digits. It is commonly used as a baseline for evaluating machine learning algorithms. This particular dataset has had the labels randomly flipped according to Class-dependent label Noise (CCN), as indicated by the transition matrix in table \ref{tab:dataset}.
 
 \subsubsection{Fashion MNIST 0.6}
+FashionMNIST0.6 is a separate subset of the grayscale Fashion MNIST dataset. This particular dataset has had the labels randomly flipped according to Random Classification Noise (RCN), as indicated by the transition matrix in table \ref{tab:dataset}.
 
 \subsubsection{CIFAR}
+CIFAR is a subset of the RGB (color) CIFAR10 dataset commonly used to train machine learning algorithms. It has had the labels randomly flipped according to Class-dependent label Noise (CCN), however the transition matrix is unknown. For the sake of comparison, we include results on the identity matrix (assume no noise).
 
 \subsection{Algorithms}
 \subsubsection{Neural networks}
+ResNet, EfficientNet, LeNet, a 1-layer net and a 3-layer net are implemented with both the forward and backward transition matrix methods. The implementation ensures the label noise robustness of the classifiers. The same optimization hyperparameters were used across all neural networks, as shown in table \ref{tab:nn}.
+
 \begin{table}\begin{tabular}{cc} param & value\\\hline
 optimizer & Adam\\
 learning rate & 0.001\\
@@ -134,6 +206,10 @@ hardware & AWS p3.2xlarge
 \end{tabular}\caption{Parameters used for neural network training. \label{tab:nn}}\end{table}
 
 \subsubsection{Black box classifiers}
+The two black box algorithms are explored, LightGBM and logistic regression. Both classifiers' hyperparameters are tuned for each individual dataset as shown in table \ref{tab:lgb} and table \ref{tab:lr}.
+
+We have no direct access to the gradient of these algorithms and instead treat them as black boxes. For this reason, only the backward method is applied to each classifier, as it requires no modification to the standard loss function (cross entropy).
+
 \begin{table}\begin{tabular}{ccccccc} dataset & $\lambda_{\ell_1}$ & $\lambda_{\ell_2}$ & $n$ & $f$ & $b$ & $h$\\\hline
 FashionMNIST0.5 & $10^{-4}$ & $10^{-4}$ & 9 & 95.20 & 94.78 & 1\\
 FashionMNIST0.6 & 0 & 0 & 3 & 80.00 & 90.54 & 3\\
@@ -172,6 +248,8 @@ where $T$ is the given transition matrix and $\hat{T}$ is the estimated transiti
 
 \subsection{Results}
 \subsubsection{Test accuracy using given transition matrices}
+Figures \ref{fig:acc-FashionMNIST0.5} and \ref{fig:acc-FashionMNIST0.6} show LeNet, 1-layer, 3-layer and LightGBM performing reasonably well. For the neural networks, the forward method consistently outperforms the backward method. Figure \ref{fig:acc-CIFAR} shows results using the identity transition matrix (i.e. assuming no noise), and the results are consistent with the first two datasets. This suggests that the robustness of the underlying classifier is important to achieving high accuracy.
+
 \begin{figure}\begin{tikzpicture}\begin{axis}[
     title={FashionMNIST0.5 - given},
     ybar, nodes near coords,
@@ -212,6 +290,8 @@ where $T$ is the given transition matrix and $\hat{T}$ is the estimated transiti
 }\end{figure}
 
 \subsubsection{Test accuracy using estimated transition matrices}
+Figures \ref{fig:acc-hat-FashionMNIST0.5} and \ref{fig:acc-hat-FashionMNIST0.6} show consistent performance compared to the results on the given transition matrices. LightGBM performs paticularly well on the first two datasets using the estimated transition matrix. Figure \ref{fig:acc-hat-CIFAR} shows consistently better results than when assuming no noise.
+
 \begin{figure}\begin{tikzpicture}\begin{axis}[
     title={FashionMNIST0.5 - estimated},
     ybar, nodes near coords,
@@ -253,6 +333,8 @@ where $T$ is the given transition matrix and $\hat{T}$ is the estimated transiti
 
 
 \subsubsection{RRE of estimated transition matrices}
+Figures \ref{fig:T-hat-RRE-FashionMNIST0.5} and \ref{fig:T-hat-RRE-FashionMNIST0.6} show LeNet and LightGBM to be accurately estimating the transition matrix, which explains their higher levels of accuracy. Figure \ref{fig:T-hat-RRE-CIFAR} shows that EfficientNet and logistic regression are underfitting the transition matrix (they are predicting close to identity matrix). Perhaps the EfficientNet training is stopping too early due to poor generalization on the validation set.
+
 \begin{figure}\begin{tikzpicture}\begin{axis}[
     title={FashionMNIST0.5 - RRE},
     ybar, nodes near coords,
@@ -293,6 +375,8 @@ where $T$ is the given transition matrix and $\hat{T}$ is the estimated transiti
 }\end{figure}
 
 \subsubsection{Estimated transition matrices}
+Tables \ref{tab:T-FashionMNIST0.5} and \ref{tab:T-FashionMNIST0.6} list the estimated transition matrices on the first two datasets. From the results we can see that LeNet and LightGBM have the lowest error on the first two respective datasets. Table \ref{tab:T-CIFAR} lists the estimated transition matrices on the CIFAR dataset. Based on the RRE results from the first two datasets and the accuracy results, we believe either LeNet or LightGBM to be generating the most accurate transition matrix for the CIFAR dataset.
+
 \begin{table}\begin{tabular}{ccc}Model&T&STD\\\hline
 lenet & $\begin{bmatrix}0.6088 & 0.1533 & 0.2544\\0.2667 & 0.5980 & 0.1733\\0.1246 & 0.2488 & 0.5723\end{bmatrix}$ & $\begin{bmatrix}0.0308 & 0.0153 & 0.0235\\0.0239 & 0.0425 & 0.0240\\0.0243 & 0.0328 & 0.0417\end{bmatrix}$\\
 lenet-backward & $\begin{bmatrix}0.6001 & 0.1512 & 0.2485\\0.2654 & 0.5968 & 0.1678\\0.1346 & 0.2520 & 0.5838\end{bmatrix}$ & $\begin{bmatrix}0.0183 & 0.0160 & 0.0203\\0.0213 & 0.0335 & 0.0239\\0.0156 & 0.0361 & 0.0393\end{bmatrix}$\\
@@ -390,13 +474,21 @@ logistic & $\begin{bmatrix}0.7887 & 0.1280 & 0.1201\\0.1641 & 0.7512 & 0.1001\\0
   \label{tab:CIFAR}
 }\end{table}
 
+As we can see in tables \ref{tab:FashionMNIST0.5} and \ref{tab:FashionMNIST0.6}, LightGBM performed very well with FashionMNIST datasets compared to other networks, mainly due to two factors. Firstly the FashionMNIST datasets have a relatively low dimension and features, LightGBM is able to learn through information gain, secondly, due to the small sample size of the dataset, some of the complex networks are not able to unleash their full potential. This is especially true when the data contains noisy label, as small dataset limits the ability of complex neural network to give an accurate prediction on the noisy dataset, hence the estimated transition matrix is likely to contain error. The poorly calculated transition matrix is inadequate to reduce the noise in the noisy label, which would ultimately lead to a poor result in predicting the true class of the given data. The results show that neural network only have a marginal increase in accuracy.
+
+However, when the dataset becomes larger and more complex, i.e. more features and increased dimensions, the classification accuracy of neural network starts to surpass the baseline LightGBM model, as can be seen in table \ref{tab:CIFAR}. It is because that LightGBM is unable to fully and appropriately learn the increasing complex features. Deep neural networks have the capability of learning complex features through a large number of filters where each feature can be extracted and assigned the appropriate weight. The results confirm the theory as neural networks outperform LightGBM on the more complex CIFAR dataset.
+
+The advantage of simple network when working on small dataset is shown again through high performance of LeNet. ResNet and EfficientNet are two very well-designed networks however, in our experiment due to lack of data, their complexity means that they require a large amount of data to avoid high bias (underfitting) and high variance (overfitting).
+
+
 \section{Conclusion}
-In conclusion, you should summarize your methods, results, and your insights for the future work.
+Overall, the experiment can demonstrate the increase in robustness by using transition matrix. The limitations of each classifier are explored. LightGBM being able to learn well in simple dataset, however, struggles when dataset becomes more complex. Neural networks in general suffers from limited data sample size, and we see simple structure such as LeNet excels when sample size is small. The accuracy of the classifier has a significant impact on its robustness, as anchor point is used. Hence to accurately predict the true class using a noisy labeled dataset would largely depend on the learning ability of the classifier.
 
 \subsection{Future work}
+Using transition matrix is an effective way to increase the robustness of a classifier, however, it does create a dependency on the classifier’s accuracy. This generally will not be an issue when a large dataset is available, however when the data is limited, it might be useful to reduce the dependence on classifier's accuracy.
 
 
-\printbibliography\appendix
+\pagebreak\printbibliography\appendix
 
 \section{Running the code}
 The experiment code is contained in a single file \texttt{algorithm.py}, which can either be imported as a module or run as a standalone script.
